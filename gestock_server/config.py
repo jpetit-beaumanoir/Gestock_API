@@ -35,3 +35,5 @@ API_KEYS = {
         "rol": "usuari"
     }
 }
+
+ROLES = getenv("ROLES")
