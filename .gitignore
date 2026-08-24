@@ -1,0 +1,49 @@
+# Virtual*environment
+venv/
+.venv/
+
+# Python*__pycache__/
+*.py*cod]
+*$py.class
+*.pyc
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.env.*
+gestock.env
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage
+.coverage
+htmlcov/
+
+# Testing
+.pytest_cache/
+
+# Certificates
+*.pem
+*.crt
+*.key
+certificates/
+
+# Runtime data
+data/
+exports/
+temp/
+*.txt
+
+# SQLite
+*.db
+*.sqlite
+*.sqlite3

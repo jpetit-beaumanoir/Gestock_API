@@ -1,0 +1,32 @@
+from os import getenv
+
+HEADER_NAME = getenv(
+    "HEADER_NAME",
+    "X-API-Key"
+)
+
+MAX_FAILED_ATTEMPTS = int(
+    getenv(
+        "MAX_FAILED_ATTEMPTS",
+        "5"
+    )
+)
+
+API_KEYS = {
+    getenv("APIKEY_ANONIM"): {
+        "nom": "anonim",
+        "rol": "limitat"
+    },
+    getenv("APIKEY_CARLES"): {
+        "nom": "Carles",
+        "rol": "usuari"
+    },
+    getenv("APIKEY_SYLVAIN"): {
+        "nom": "Sylvain",
+        "rol": "usuari"
+    },
+    getenv("APIKEY_IT"): {
+        "nom": "IT",
+        "rol": "usuari"
+    }
+}
