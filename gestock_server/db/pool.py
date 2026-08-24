@@ -1,5 +1,11 @@
 from fastapi import HTTPException
 from gestock_server.db.connection import ConnectionWrapper
+from gestock_server.config import (
+    DB_DATABASE,
+    DB_PASSWORD,
+    DB_SERVER,
+    DB_USER
+)
 
 import threading
 import logging
@@ -64,10 +70,10 @@ class ConnectionPool:
         """
         try:
             conn = pymssql.connect(
-                server = '192.168.1.252',
-                user = 'sa',
-                password = 'mplZ3Excv',
-                database = 'GESTOCK'
+                server = DB_SERVER,
+                user = DB_USER,
+                password = DB_PASSWORD,
+                database = DB_DATABASE
             )
             logging.info("Nueva conexión establecida con la base de datos.")
             return conn
