@@ -41,7 +41,7 @@ certificates/
 data/
 exports/
 temp/
-*.txt
+blocked_ips.txt
 
 # SQLite
 *.db
