@@ -4,7 +4,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 import logging
 
-from gestock_server.config import API_KEYS, HEADER_NAME, MAX_FAILED_ATTEMPTS, FAILED_ATTEMPTS, BLOCKED_IPS_FILE, BLOCKED_IPS, PUBLIC_ROUTES
+from gestock_server.config import API_KEYS, HEADER_NAME, MAX_FAILED_ATTEMPTS, PUBLIC_ROUTES, FAILED_ATTEMPTS, BLOCKED_IPS, BLOCKED_IPS_FILE
 
 class APIKeyMiddleware(BaseHTTPMiddleware):
     """

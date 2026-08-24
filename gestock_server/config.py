@@ -16,6 +16,7 @@ MAX_FAILED_ATTEMPTS = int(
         "5"
     )
 )
+BLOCKED_IPS_FILE = getenv("BLOCKED_IP_FILE")
 
 API_KEYS = {
     getenv("APIKEY_ANONIM"): {
@@ -37,3 +38,14 @@ API_KEYS = {
 }
 
 ROLES = getenv("ROLES")
+
+PUBLIC_ROUTES = {
+    "/docs",
+    "/openapi.json",
+    "/redoc",
+    "/health",
+    "/favicon.ico"
+}
+
+BLOCKED_IPS = []
+FAILED_ATTEMPTS = {}
