@@ -37,7 +37,11 @@ API_KEYS = {
     }
 }
 
-ROLES = getenv("ROLES")
+ROLES = {
+    "limitat": 1,
+    "usuari": 2,
+    "admin": 3,
+}
 
 PUBLIC_ROUTES = {
     "/docs",

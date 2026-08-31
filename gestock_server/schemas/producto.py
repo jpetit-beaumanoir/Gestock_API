@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-class ProductoResponse(BaseModel):
+class ProductosGetResponse(BaseModel):
     ean: str
     nombre: str
     familia: str

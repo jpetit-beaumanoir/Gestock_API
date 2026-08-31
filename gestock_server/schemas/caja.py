@@ -8,11 +8,6 @@ class CajaExistsDB(BaseModel):
     descripcion: str
     cantidad: int
 
-
-class CajasGetRequest(BaseModel):
-    almacen: int
-    palet: int
-
 class CajaInfo(BaseModel):
     cantidad: int
     descripcion: str
@@ -26,18 +21,8 @@ class CajaCreateRequest(BaseModel):
     almacen: int
     palet: int
 
-class CajaDeleteRequest(BaseModel):
-    almacen: int
-    palet: int
-    caja: int
-
 class MessageResponse(BaseModel):
     message: str
-
-class CajaGetDescTempRequest(BaseModel):
-    almacen: int
-    palet: int
-    caja: int
 
 class CajaGetDescTempResponse(BaseModel):
     descripcion: str

@@ -4,7 +4,6 @@ from gestock_server.services import almacenes_service
 from gestock_server.schemas.almacen import (
     AlmacenResponse, 
     AlmacenLoginResponse, 
-    AlmacenLoginRequest, 
     AlmacenCreateRequest,
     AlmacenDeleteRequest,
     MessageResponse
@@ -46,26 +45,26 @@ async def get_almacenes(request: Request):
 @router.get("/login",response_model=AlmacenLoginResponse)
 async def login_almacen(
     request: Request, 
-    data: AlmacenLoginRequest
+    codigo: int
 ):
 
     try:
-        result = almacenes_service.login_almacen(data.codigo)
-        logging.info(f"{request.state.user} HA ACCEDIT AL MAGATZEM {data.codigo} DES DE {request.client.host}")
+        result = almacenes_service.login_almacen(codigo)
+        logging.info(f"{request.state.user} HA ACCEDIT AL MAGATZEM {codigo} DES DE {request.client.host}")
 
         return result
         
     except ValueError:
-        logging.warning(f"{request.state.user} INTENT D'ACCEDIR A UN MAGATZEM INNEXISTENT {data.codigo} DES DE {request.client.host}")
+        logging.warning(f"{request.state.user} INTENT D'ACCEDIR A UN MAGATZEM INNEXISTENT {codigo} DES DE {request.client.host}")
 
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"No existeix un magatzem amb codi {data.codigo}"
+            detail=f"No existeix un magatzem amb codi {codigo}"
         )
 
     except ConnectionError:
         logging.error(
-            f"ERROR DE BD FENT LOGIN AL MAGATZEM {data.codigo}"
+            f"ERROR DE BD FENT LOGIN AL MAGATZEM {codigo}"
         )
 
         raise HTTPException(

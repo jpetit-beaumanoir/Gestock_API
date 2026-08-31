@@ -1,9 +1,4 @@
-from pydantic import BaseModel, conlist, Field
-
-class StockGetRequest(BaseModel):
-    almacen: int
-    palet: int
-    caja: int
+from pydantic import BaseModel, conlist
 
 class StockAddRequest(BaseModel):
     almacen: int
@@ -34,15 +29,6 @@ class StockInfo(BaseModel):
 class StockGetResponse(BaseModel):
     stock: dict[str, StockInfo]
     total: int
-
-class StockExportRequest(BaseModel):
-    almacen: int
-    ean: str | None = None
-    talla: str | None = None
-    nombre: str | None = None
-    familia: str | None = None
-    color: str | None = None
-    temporada: str | None = None
 
 class StockExportItem(BaseModel):
     ean: str

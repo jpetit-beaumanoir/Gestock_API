@@ -9,10 +9,6 @@ class AlmacenInfo(BaseModel):
 class AlmacenResponse(BaseModel):
     almacenes: dict[str, AlmacenInfo]
 
-
-class AlmacenLoginRequest(BaseModel):
-    codigo: int
-
 class AlmacenLoginResponse(BaseModel):
     nombre: str
 

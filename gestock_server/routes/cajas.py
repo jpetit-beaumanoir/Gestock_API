@@ -1,18 +1,10 @@
 from fastapi import APIRouter, Depends, Request, HTTPException, status
 from gestock_server.services import cajas_service
 from gestock_server.schemas.caja import (
-    CajasGetRequest,
     CajasGetResponse,
-
     CajaCreateRequest,
-    CajaDeleteRequest,
-
-    CajaGetDescTempRequest,
-
     MessageResponse, 
-
     CajaGetDescTempResponse, 
-    
     CajaUpdateDescTempRequest,
     CajaUpdateCantidadRequest
 )
@@ -31,22 +23,23 @@ router = APIRouter(
 @router.get("",response_model=CajasGetResponse)
 async def get_caixes(
     request:Request,
-    data: CajasGetRequest
+    almacen: int,
+    palet: int
 ):   
 
     try:
         result = cajas_service.get_cajas(
-            almacen=data.almacen,
-            palet=data.palet
+            almacen=almacen,
+            palet=palet
         )
         
-        logging.info(f"{request.state.user} HA LLISTAT LES {len(result.cajas)} CAIXES DEL PALET {data.palet} ALMACÉN {data.almacen}")
+        logging.info(f"{request.state.user} HA LLISTAT LES {len(result.cajas)} CAIXES DEL PALET {palet} ALMACÉN {almacen} ({request.client.host})")
 
         return result
 
     except ConnectionError:
         logging.error(
-            f"ERROR DE BD OBTENINT LLISTA DE CAIXES DEL PALET {data.palet} ALMACÉN {data.almacen}"
+            f"ERROR DE BD OBTENINT LLISTA DE CAIXES DEL PALET {palet} ALMACÉN {almacen}"
         )
 
         raise HTTPException(
@@ -86,26 +79,28 @@ async def create_caixa(
 @router.delete("/delete",response_model=MessageResponse)
 async def delete_caixa(
     request: Request,
-    data: CajaDeleteRequest
+    almacen: int,
+    palet: int,
+    caja: int
 ):
     
     try:
         
         result = cajas_service.delete_caja(
-            almacen=data.almacen,
-            palet=data.palet,
-            caja=data.caja
+            almacen=almacen,
+            palet=palet,
+            caja=caja
         )
 
         logging.info(
-            f"{request.state.user} HA ELIMINAT LA CAIXA {data.caja} DEL PALET {data.palet} DEL MAGATZEM {data.almacen} ({request.client.host})"
+            f"{request.state.user} HA ELIMINAT LA CAIXA {caja} DEL PALET {palet} DEL MAGATZEM {almacen} ({request.client.host})"
         )
 
         return result
     
     except ValueError:
 
-        logging.warning(f"{request.state.user} HA INTENTAT ELIMINAR LA CAIXA {data.caja} DEL PALET {data.palet} DEL MAGATZEM {data.almacen} AMB PRODUCTES A DINTRE ({request.client.host})")
+        logging.warning(f"{request.state.user} HA INTENTAT ELIMINAR LA CAIXA {caja} DEL PALET {palet} DEL MAGATZEM {almacen} AMB PRODUCTES A DINTRE ({request.client.host})")
 
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -115,7 +110,7 @@ async def delete_caixa(
     except ConnectionError:
 
         logging.error(
-            f"ERROR DE BD ELIMINANT LA CAIXA {data.caja} DEL PALET {data.palet} DEL MAGATZEM {data.almacen} ({request.client.host})"
+            f"ERROR DE BD ELIMINANT LA CAIXA {caja} DEL PALET {palet} DEL MAGATZEM {almacen} ({request.client.host})"
         )
 
         raise HTTPException(
@@ -126,35 +121,37 @@ async def delete_caixa(
 @router.get("/get-desc-temp",response_model=CajaGetDescTempResponse)
 async def get_desc_temp_caja(
     request: Request,
-    data: CajaGetDescTempRequest
+    almacen: int,
+    palet: int,
+    caja: int
 ):
     try:
     
         result = cajas_service.get_desc_temp_caja(
-            almacen=data.almacen,
-            palet=data.palet,
-            caja=data.caja
+            almacen=almacen,
+            palet=palet,
+            caja=caja
         )
 
         logging.info(
-            f"{request.state.user} HA OBTINGUT LA DESCRIPCIÓ I TEMPORADA DE LA CAIXA {data.caja} DEL PALET {data.palet} DEL MAGATZEM {data.almacen} ({request.client.host})"
+            f"{request.state.user} HA OBTINGUT LA DESCRIPCIÓ I TEMPORADA DE LA CAIXA {caja} DEL PALET {palet} DEL MAGATZEM {almacen} ({request.client.host})"
         )
 
         return result
 
     except ValueError:
 
-        logging.warning(f"{request.state.user} HA INTENTAT OBTENIR LA DESCRIPCIÓ I TEMPORADA DE LA CAIXA {data.caja} DEL PALET {data.palet} DEL MAGATZEM {data.almacen} QUE NO EXISTEIX ({request.client.host})")
+        logging.warning(f"{request.state.user} HA INTENTAT OBTENIR LA DESCRIPCIÓ I TEMPORADA DE LA CAIXA {caja} DEL PALET {palet} DEL MAGATZEM {almacen} QUE NO EXISTEIX ({request.client.host})")
 
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"La caixa {data.caja} del palet {data.palet} del magatzem {data.almacen} no existeix"
+            detail=f"La caixa {caja} del palet {palet} del magatzem {almacen} no existeix"
         )
 
     except ConnectionError:
 
         logging.error(
-            f"ERROR DE BD OBTENINT LA DESCRIPCIÓ I TEMPORADA DE LA CAIXA {data.caja} DEL PALET {data.palet} DEL MAGATZEM {data.almacen} ({request.client.host})"
+            f"ERROR DE BD OBTENINT LA DESCRIPCIÓ I TEMPORADA DE LA CAIXA {caja} DEL PALET {palet} DEL MAGATZEM {almacen} ({request.client.host})"
         )
 
         raise HTTPException(

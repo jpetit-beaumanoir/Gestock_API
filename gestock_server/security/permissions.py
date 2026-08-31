@@ -9,7 +9,7 @@ def require_role(required_role: str):
 
         user_role = request.state.rol
 
-        if ROLES[user_role] < ROLES[required_role]:
+        if int(ROLES[user_role]) < int(ROLES[required_role]):
             raise HTTPException(
                 403,
                 detail="NO TIENES PERMISOS SUFICIENTES"
