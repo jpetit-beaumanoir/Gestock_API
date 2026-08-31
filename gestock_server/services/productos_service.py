@@ -1,5 +1,5 @@
 from gestock_server.db.database import db_pool
-from gestock_server.schemas.producto import ProductInfo, ProductosGetResponse
+from gestock_server.schemas.producto import ProductosGetResponse
 from fastapi import requests
 
 import logging

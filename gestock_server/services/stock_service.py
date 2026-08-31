@@ -5,7 +5,6 @@ from gestock_server.schemas.stock import (
     StockMoveRequest, 
     StockGetResponse, 
     StockInfo, 
-    StockExportRequest,
     StockExportResponse,
     MessageResponse
 )
