@@ -6,6 +6,7 @@ from gestock_server.schemas.temporada import (
 from gestock_server.security.permissions import require_role
 
 import logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/gestock/temporadas",
@@ -22,12 +23,12 @@ async def get_temporadas(
     try:
         result = temporadas_service.get_temporadas()
         
-        logging.info(f"{request.state.user} HA CONSULTAT LES TEMPORADES ({request.client.host})")
+        logger.info(f"{request.state.user} HA CONSULTAT LES TEMPORADES ({request.client.host})")
 
         return result
 
     except ConnectionError:
-        logging.error(
+        logger.error(
             f"ERROR DE BD OBTENINT LES TEMPORADES ({request.client.host})"
         )
 

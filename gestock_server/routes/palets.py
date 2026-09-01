@@ -8,6 +8,7 @@ from gestock_server.schemas.palet import (
 from gestock_server.security.permissions import require_role
 
 import logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/gestock/palets",
@@ -28,12 +29,12 @@ async def get_palets(
             almacen
         )
         
-        logging.info(f"{request.state.user} HA LLISTAT {result.total} PALETS DEL MAGATZEM {almacen} ({request.client.host})")
+        logger.info(f"{request.state.user} HA LLISTAT {result.total} PALETS DEL MAGATZEM {almacen} ({request.client.host})")
 
         return result
 
     except ConnectionError:
-        logging.error(
+        logger.error(
             f"ERROR DE BD OBTENINT ELS PALETS DEL MAGATZEM {almacen} ({request.client.host})"
         )
 
@@ -53,7 +54,7 @@ async def create_palet(
             data.almacen
         )
 
-        logging.info(
+        logger.info(
             f"{request.state.user} HA CREAT EL PALET {data.almacen} ({request.client.host})"
         )
 
@@ -61,7 +62,7 @@ async def create_palet(
 
     except ValueError as e:
 
-        logging.warning(
+        logger.warning(
             f"{request.state.user} S'HA INTENTAT CREAR UN PALET DUPLICAT AL MAGATZEM {data.almacen} ({request.client.host})"
         )
 
@@ -72,7 +73,7 @@ async def create_palet(
 
     except ConnectionError:
 
-        logging.error(
+        logger.error(
             f"ERROR DE BD CREANT EL PALET"
         )
 
@@ -92,7 +93,7 @@ async def delete_palet(
         
         result = palets_service.delete_palet(almacen,palet)
 
-        logging.info(
+        logger.info(
             f"{request.state.user} HA ELIMINAT EL PALET {palet} DEL MAGATZEM {almacen} ({request.client.host})"
         )
 
@@ -100,7 +101,7 @@ async def delete_palet(
     
     except ValueError:
 
-        logging.warning(f"{request.state.user} HA INTENTAT ELIMINAR EL  PALET {palet} DEL MAGATZEM {almacen} AMB CAIXES A DINTRE ({request.client.host})")
+        logger.warning(f"{request.state.user} HA INTENTAT ELIMINAR EL  PALET {palet} DEL MAGATZEM {almacen} AMB CAIXES A DINTRE ({request.client.host})")
 
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -109,7 +110,7 @@ async def delete_palet(
 
     except ConnectionError:
 
-        logging.error(
+        logger.error(
             f"ERROR DE BD ELIMINANT EL PALET {palet} DEL MAGATZEM {almacen}"
         )
 

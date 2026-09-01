@@ -4,6 +4,7 @@ from gestock_server.schemas.producto import ProductosGetResponse
 from gestock_server.security.permissions import require_role
 
 import logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/gestock/producto",
@@ -25,12 +26,12 @@ async def get_product_values(
             codemag = codemag
         )
         
-        logging.info(f"{request.state.user} HA OBTINGUT ELS VALORS DEL PRODUCTE {ean} ({request.client.host})")
+        logger.info(f"{request.state.user} HA OBTINGUT ELS VALORS DEL PRODUCTE {ean} ({request.client.host})")
 
         return result
 
     except ConnectionError:
-        logging.error(
+        logger.error(
             f"ERROR DE BD OBTENINT INFORMACIÓ DE PRODUCTES"
         )
 

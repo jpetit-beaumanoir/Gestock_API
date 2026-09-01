@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 
 import os
+from gestock_server.logging_config import setup_logging
 
 from gestock_server.routes.auth import router as auth_router
 from gestock_server.routes.almacenes import router as almacenes_router
@@ -18,6 +19,7 @@ from gestock_server.middleware.connection_logger import (
 from gestock_server.middleware.ratelimit import limiter
 from slowapi.middleware import SlowAPIMiddleware
 
+setup_logging()
 
 app = FastAPI(
     title="Gestock API",

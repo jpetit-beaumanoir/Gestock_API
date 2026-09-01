@@ -11,6 +11,7 @@ from gestock_server.schemas.stock import (
 from gestock_server.security.permissions import require_role
 
 import logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/gestock/stock",
@@ -34,12 +35,12 @@ async def get_stock_caja(
             caja=caja
         )
         
-        logging.info(f"{request.state.user} HA CONSULTAT EL STOCK DE LA CAIXA {caja} DEL PALET {palet} EN EL MAGATZEM {almacen} ({request.client.host})")
+        logger.info(f"{request.state.user} HA CONSULTAT EL STOCK DE LA CAIXA {caja} DEL PALET {palet} EN EL MAGATZEM {almacen} ({request.client.host})")
 
         return result
 
     except ConnectionError:
-        logging.error(
+        logger.error(
             f"ERROR DE BD OBTENINT STOCK DE LA CAIXA {caja} DEL PALET {palet} EN EL MAGATZEM {almacen} ({request.client.host})"
         )
 
@@ -58,14 +59,14 @@ async def add_stock(
             body=data
         )
 
-        logging.info(
+        logger.info(
             f"{request.state.user} HA AFEGIT {len(data.eans)} PRODUCTES A LA CAIXA {data.caja} DEL PALET {data.palet} EN EL MAGATZEM {data.almacen} ({request.client.host})"
         )
 
         return result
 
     except ValueError as e:
-        logging.warning(
+        logger.warning(
             f"{request.state.user} HA INTENTAT AFEGIR STOCK SENSE EANS ({request.client.host})"
         )
         raise HTTPException(
@@ -74,7 +75,7 @@ async def add_stock(
         )
 
     except ConnectionError:
-        logging.error(
+        logger.error(
             f"ERROR DE BD AFEGINT STOCK A LA CAIXA {data.caja} DEL PALET {data.palet} EN EL MAGATZEM {data.almacen} ({request.client.host})"
         )
 
@@ -93,14 +94,14 @@ async def delete_stock(
             body=data
         )
 
-        logging.info(
+        logger.info(
             f"{request.state.user} HA ELIMINAT {len(data.ids)} PRODUCTES DE LA CAIXA {data.caja} DEL PALET {data.palet} EN EL MAGATZEM {data.almacen} ({request.client.host})"
         )
 
         return result
 
     except ValueError as e:
-        logging.warning(
+        logger.warning(
             f"{request.state.user} HA INTENTAT ELIMINAR STOCK SENSE EANs ({request.client.host})"
         )
         raise HTTPException(
@@ -109,7 +110,7 @@ async def delete_stock(
         )
 
     except ConnectionError:
-        logging.error(
+        logger.error(
             f"ERROR DE BD ELIMINANT STOCK DE LA CAIXA {data.caja} DEL PALET {data.palet} EN EL MAGATZEM {data.almacen} ({request.client.host})"
         )
 
@@ -128,14 +129,14 @@ async def move_stock(
             body=data
         )
 
-        logging.info(
+        logger.info(
             f"{request.state.user} HA MOGUT {len(data.ids)} PRODUCTES DE LA CAIXA {data} DEL PALET {data} EN EL MAGATZEM {data.almacen} ({request.client.host})"
         )
 
         return result
 
     except ValueError as e:
-        logging.warning(
+        logger.warning(
             f"{request.state.user} HA INTENTAT MOURE STOCK SENSE EANs ({request.client.host})"
         )
         raise HTTPException(
@@ -144,7 +145,7 @@ async def move_stock(
         )
 
     except ConnectionError:
-        logging.error(
+        logger.error(
             f"ERROR DE BD MOVENT STOCK DE LA CAIXA {data.caja} DEL PALET {data.palet} EN EL MAGATZEM {data.almacen} ({request.client.host})"
         )
 
@@ -166,23 +167,21 @@ async def export_stock(
 ):
     try:
         result = stock_service.filtered_search(
-            StockExportRequest(
-                almacen = almacen,
-                ean = ean,
-                talla = talla,
-                nombre = nombre,
-                familia = familia,
-                color = color,
-                temporada = temporada
-            )
+            almacen = almacen,
+            ean = ean,
+            talla = talla,
+            nombre = nombre,
+            familia = familia,
+            color = color,
+            temporada = temporada
         )
         
-        logging.info(f"{request.state.user} HA EXPORTAT STOCK DEL MAGATZEM {almacen} ({request.client.host})")
+        logger.info(f"{request.state.user} HA EXPORTAT STOCK DEL MAGATZEM {almacen} ({request.client.host})")
 
         return result
 
     except ConnectionError:
-        logging.error(
+        logger.error(
             f"ERROR DE BD EXPORTANT STOCK DEL MAGATZEM {almacen} ({request.client.host})"
         )
 

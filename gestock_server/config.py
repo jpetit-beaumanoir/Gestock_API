@@ -37,6 +37,8 @@ API_KEYS = {
     }
 }
 
+APIKEY_EXTERNAL = getenv("APIKEY_EXTERNAL")
+
 ROLES = {
     "limitat": 1,
     "usuari": 2,

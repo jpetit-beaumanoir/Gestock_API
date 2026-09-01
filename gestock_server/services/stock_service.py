@@ -8,9 +8,10 @@ from gestock_server.schemas.stock import (
     StockExportResponse,
     MessageResponse
 )
+import pymssql
 
 import logging
-import pymssql
+logger = logging.getLogger(__name__)
 
 def get_stock_caja(almacen: int, palet: int, caja: int) -> StockGetResponse:
     """
@@ -80,7 +81,7 @@ def get_stock_caja(almacen: int, palet: int, caja: int) -> StockGetResponse:
                 return StockGetResponse(stock=data, total=len(stock))
 
     except pymssql.Error as e:
-        logging.critical(f"ERROR SQL: {e}")
+        logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de la base de dades")
 
 def add_stock(body: StockAddRequest) -> MessageResponse:
@@ -129,7 +130,7 @@ def add_stock(body: StockAddRequest) -> MessageResponse:
                 return MessageResponse(message=f"Insertados {insertados} productos con éxito.")
 
     except pymssql.Error as e:
-        logging.critical(f"ERROR SQL: {e}")
+        logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de la base de dades")
 
 def delete_stock(body: StockDeleteRequest) -> MessageResponse:
@@ -173,7 +174,7 @@ def delete_stock(body: StockDeleteRequest) -> MessageResponse:
                 return MessageResponse(message=f"Eliminados {eliminados} productos con éxito.")
 
     except pymssql.Error as e:
-        logging.critical(f"ERROR SQL: {e}")
+        logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de la base de dades")
 
 def move_stock(body: StockMoveRequest) -> MessageResponse:
@@ -224,12 +225,18 @@ def move_stock(body: StockMoveRequest) -> MessageResponse:
                 return MessageResponse(message=f"Movidos {moved_count} productos con éxito.")
 
     except pymssql.Error as e:
-        logging.critical(f"ERROR SQL: {e}")
+        logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de la base de dades")
     
 
 def filtered_search(
-    data: StockExportRequest
+    almacen: int,
+    ean: str | None = None,
+    talla: str | None = None,
+    nombre: str | None = None,
+    familia: str | None = None,
+    color: str | None = None,
+    temporada: str | None = None
 ) -> StockExportResponse:
 
     """
@@ -272,39 +279,39 @@ def filtered_search(
                 """
                 
                 # Lista para almacenar los parámetros de consulta
-                query_params = [data.almacen]
+                query_params = [almacen]
 
                 # Filtrar por EAN si se proporciona
-                if data.ean:
+                if ean:
                     query += " AND p.ean = %s"
-                    query_params.append(data.ean)
+                    query_params.append(ean)
 
                 # Filtrar por nombre si se proporciona
-                if data.nombre:
+                if nombre:
                     query += " AND LOWER(p.nombre) LIKE %s"
-                    query_params.append(f"%{data.nombre.lower()}%")
+                    query_params.append(f"%{nombre.lower()}%")
 
                 # Filtrar por talla si se proporciona
-                if data.talla:
+                if talla:
                     query += " AND LOWER(p.talla) LIKE %s"
-                    query_params.append(f"%{data.talla.lower()}%")
+                    query_params.append(f"%{talla.lower()}%")
 
                 # Filtrar por familia si se proporciona (se permite lista separada por comas)
-                if data.familia:
-                    for fam in data.familia.split(","):
+                if familia:
+                    for fam in familia.split(","):
                         if fam.strip():  # Evitar filtros vacíos
                             query += " AND LTRIM(RTRIM(p.familia)) LIKE %s"
                             query_params.append(f"%{fam.strip().lower()}%")
 
                 # Filtrar por color si se proporciona
-                if data.color:
+                if color:
                     query += " AND LOWER(p.color) LIKE %s"
-                    query_params.append(f"%{data.color.lower()}%")
+                    query_params.append(f"%{color.lower()}%")
 
                 # Filtrar por temporada si se proporciona
-                if data.temporada:
+                if temporada:
                     query += " AND LTRIM(RTRIM(p.temporada)) LIKE LOWER(%s)"
-                    query_params.append(f"%{data.temporada.lower()}%")
+                    query_params.append(f"%{temporada.lower()}%")
 
                 # Ordenar los resultados por EAN
                 query += " ORDER BY p.ean"
@@ -326,5 +333,5 @@ def filtered_search(
 
 
     except pymssql.Error as e:
-        logging.critical(f"ERROR SQL: {e}")
+        logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de la base de dades")

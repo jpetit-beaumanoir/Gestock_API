@@ -1,6 +1,8 @@
 from gestock_server.db.database import db_pool
 from gestock_server.schemas.producto import ProductosGetResponse
 from fastapi import requests
+from gestock_server.config import APIKEY_EXTERNAL
+
 
 import logging
 import pymssql
@@ -114,7 +116,7 @@ async def get_product_external_API(ean: str, codigo_almacen: int):
         # Encabezados para la solicitud HTTP
         headers = {
             "Content-Type": "application/json",
-            "KeyId": "93510b58-06dc-4efb-b1ab-dbdc23478d0d"  # ID de la clave API
+            "KeyId": APIKEY_EXTERNAL  # ID de la clave API
         }
 
         try:
@@ -160,7 +162,7 @@ async def get_product_external_API(ean: str, codigo_almacen: int):
                             talla = partes[-1] if len(partes) > 1 else ""
 
                     # Crear el objeto con los datos procesados
-                    product_data = ProductInfo(
+                    product_data = ProductosGetResponse(
                         ean = ean,
                         nombre = nombre,
                         familia = familia,

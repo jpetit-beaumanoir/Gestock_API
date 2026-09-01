@@ -11,6 +11,7 @@ from gestock_server.schemas.caja import (
 from gestock_server.security.permissions import require_role
 
 import logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/gestock/cajas",
@@ -33,12 +34,12 @@ async def get_caixes(
             palet=palet
         )
         
-        logging.info(f"{request.state.user} HA LLISTAT LES {len(result.cajas)} CAIXES DEL PALET {palet} ALMACÉN {almacen} ({request.client.host})")
+        logger.info(f"{request.state.user} HA LLISTAT LES {len(result.cajas)} CAIXES DEL PALET {palet} ALMACÉN {almacen} ({request.client.host})")
 
         return result
 
     except ConnectionError:
-        logging.error(
+        logger.error(
             f"ERROR DE BD OBTENINT LLISTA DE CAIXES DEL PALET {palet} ALMACÉN {almacen}"
         )
 
@@ -59,7 +60,7 @@ async def create_caixa(
             palet=data.palet
         )
 
-        logging.info(
+        logger.info(
             f"{request.state.user} {result.message} ({request.client.host})"
         )
 
@@ -67,7 +68,7 @@ async def create_caixa(
 
     except ConnectionError:
 
-        logging.error(
+        logger.error(
             f"ERROR DE BD CREANT UNA NOVA CAIXA AL PALET {data.palet} ALMACÉN {data.almacen} ({request.client.host})"
         )
 
@@ -92,7 +93,7 @@ async def delete_caixa(
             caja=caja
         )
 
-        logging.info(
+        logger.info(
             f"{request.state.user} HA ELIMINAT LA CAIXA {caja} DEL PALET {palet} DEL MAGATZEM {almacen} ({request.client.host})"
         )
 
@@ -100,7 +101,7 @@ async def delete_caixa(
     
     except ValueError:
 
-        logging.warning(f"{request.state.user} HA INTENTAT ELIMINAR LA CAIXA {caja} DEL PALET {palet} DEL MAGATZEM {almacen} AMB PRODUCTES A DINTRE ({request.client.host})")
+        logger.warning(f"{request.state.user} HA INTENTAT ELIMINAR LA CAIXA {caja} DEL PALET {palet} DEL MAGATZEM {almacen} AMB PRODUCTES A DINTRE ({request.client.host})")
 
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -109,7 +110,7 @@ async def delete_caixa(
 
     except ConnectionError:
 
-        logging.error(
+        logger.error(
             f"ERROR DE BD ELIMINANT LA CAIXA {caja} DEL PALET {palet} DEL MAGATZEM {almacen} ({request.client.host})"
         )
 
@@ -133,7 +134,7 @@ async def get_desc_temp_caja(
             caja=caja
         )
 
-        logging.info(
+        logger.info(
             f"{request.state.user} HA OBTINGUT LA DESCRIPCIÓ I TEMPORADA DE LA CAIXA {caja} DEL PALET {palet} DEL MAGATZEM {almacen} ({request.client.host})"
         )
 
@@ -141,7 +142,7 @@ async def get_desc_temp_caja(
 
     except ValueError:
 
-        logging.warning(f"{request.state.user} HA INTENTAT OBTENIR LA DESCRIPCIÓ I TEMPORADA DE LA CAIXA {caja} DEL PALET {palet} DEL MAGATZEM {almacen} QUE NO EXISTEIX ({request.client.host})")
+        logger.warning(f"{request.state.user} HA INTENTAT OBTENIR LA DESCRIPCIÓ I TEMPORADA DE LA CAIXA {caja} DEL PALET {palet} DEL MAGATZEM {almacen} QUE NO EXISTEIX ({request.client.host})")
 
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -150,7 +151,7 @@ async def get_desc_temp_caja(
 
     except ConnectionError:
 
-        logging.error(
+        logger.error(
             f"ERROR DE BD OBTENINT LA DESCRIPCIÓ I TEMPORADA DE LA CAIXA {caja} DEL PALET {palet} DEL MAGATZEM {almacen} ({request.client.host})"
         )
 
@@ -174,17 +175,17 @@ async def update_desc_temp_caja(
             temporada=data.temporada
         )
 
-        logging.info(
+        logger.info(
             f"{request.state.user} HA ACTUALITZAT LA DESCRIPCIÓ I TEMPORADA DE LA CAIXA {data.caja} DEL PALET {data.palet} DEL MAGATZEM {data.almacen} ({request.client.host})"
         )
 
-        logging.info(f"Descripció: {data.descripcion}, Temporada: {data.temporada} -> {result.message}")
+        logger.info(f"Descripció: {data.descripcion}, Temporada: {data.temporada} -> {result.message}")
 
         return result
 
     except ValueError:
     
-            logging.warning(f"{request.state.user} HA INTENTAT OBTENIR LA DESCRIPCIÓ I TEMPORADA DE LA CAIXA {data.caja} DEL PALET {data.palet} DEL MAGATZEM {data.almacen} QUE NO EXISTEIX ({request.client.host})")
+            logger.warning(f"{request.state.user} HA INTENTAT OBTENIR LA DESCRIPCIÓ I TEMPORADA DE LA CAIXA {data.caja} DEL PALET {data.palet} DEL MAGATZEM {data.almacen} QUE NO EXISTEIX ({request.client.host})")
     
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -193,7 +194,7 @@ async def update_desc_temp_caja(
 
     except ConnectionError:
 
-        logging.error(
+        logger.error(
             f"ERROR DE BD ACTUALITZANT LA DESCRIPCIÓ I TEMPORADA DE LA CAIXA {data.caja} DEL PALET {data.palet} DEL MAGATZEM {data.almacen} ({request.client.host})"
         )
 
@@ -215,7 +216,7 @@ async def update_cantidad_caja(
             caja=data.caja
         )
 
-        logging.info(
+        logger.info(
             f"{request.state.user} HA ACTUALITZAT LA CANTITAT DE LA CAIXA {data.caja} DEL PALET {data.palet} DEL MAGATZEM {data.almacen} ({request.client.host})"
         )
 
@@ -223,7 +224,7 @@ async def update_cantidad_caja(
 
     except ConnectionError:
 
-        logging.error(
+        logger.error(
             f"ERROR DE BD ACTUALITZANT LA CANTITAT DE LA CAIXA {data.caja} DEL PALET {data.palet} DEL MAGATZEM {data.almacen} ({request.client.host})"
         )
 

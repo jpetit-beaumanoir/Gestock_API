@@ -6,6 +6,7 @@ from gestock_server.schemas.familia import (
 from gestock_server.security.permissions import require_role
 
 import logging
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/gestock/familias",
@@ -22,12 +23,12 @@ async def get_familias(
     try:
         result = familias_service.get_familias()
         
-        logging.info(f"{request.state.user} HA CONSULTAT LES FAMILIAS DE PRODUCTES ({request.client.host})")
+        logger.info(f"{request.state.user} HA CONSULTAT LES FAMILIAS DE PRODUCTES ({request.client.host})")
 
         return result
 
     except ConnectionError:
-        logging.error(
+        logger.error(
             f"ERROR DE BD OBTENINT LES FAMILIAS DE PRODUCTES ({request.client.host})"
         )
 
