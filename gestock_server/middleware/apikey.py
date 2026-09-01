@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 import logging
+logger = logging.getLogger(__name__)
 
 from gestock_server.config import API_KEYS, HEADER_NAME, MAX_FAILED_ATTEMPTS, PUBLIC_ROUTES, FAILED_ATTEMPTS, BLOCKED_IPS, BLOCKED_IPS_FILE
 
@@ -47,7 +48,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         # Verificar si la IP ya está bloqueada
         if client_ip in BLOCKED_IPS:
             
-            logging.warning(f"Acceso bloqueado desde IP: {client_ip}, URL {request.url}")
+            logger.warning(f"Acceso bloqueado desde IP: {client_ip}, URL {request.url}")
             return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 content={"detail": "IP bloqueada"}
@@ -59,7 +60,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         if api_key not in API_KEYS:
             
             # Registrar intento fallido
-            logging.warning(f"Intento de acceso sin API Key válida: IP {client_ip}, URL {request.url}")
+            logger.warning(f"Intento de acceso sin API Key válida: IP {client_ip}, URL {request.url}")
 
             # Incrementar el contador de intentos fallidos
             FAILED_ATTEMPTS[client_ip] = FAILED_ATTEMPTS.get(client_ip, 0) + 1
@@ -69,8 +70,8 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
                 BLOCKED_IPS.append(client_ip)
                 with open(BLOCKED_IPS_FILE, 'a', encoding='utf-8') as archivo:
                     archivo.write(client_ip + '\n')
-                logging.warning(f"Acceso bloqueado desde IP: {client_ip}, URL {request.url}")
-                logging.warning(f"IP bloqueada automáticamente tras múltiples intentos: {client_ip}")
+                logger.warning(f"Acceso bloqueado desde IP: {client_ip}, URL {request.url}")
+                logger.warning(f"IP bloqueada automáticamente tras múltiples intentos: {client_ip}")
                 return JSONResponse(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     content={"detail": "IP bloqueada tras múltiples intentos fallidos"}

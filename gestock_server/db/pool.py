@@ -7,8 +7,10 @@ from gestock_server.config import (
     DB_USER
 )
 
-import threading
 import logging
+logger = logging.getLogger(__name__)
+
+import threading
 import queue
 import pymssql
 import time
@@ -58,7 +60,7 @@ class ConnectionPool:
             self._pool = queue.Queue(maxsize=max_connections)  # Cola para gestionar las conexiones
             self._active_connections = 0  # Contador de conexiones activas
             self._initialized = True
-            logging.info(f"Pool de conexiones inicializado con {max_connections} conexiones máximas.")
+            logger.info(f"Pool de conexiones inicializado con {max_connections} conexiones máximas.")
     
     def _create_connection(self):
         """Crea una nueva conexión a la base de datos.
@@ -75,7 +77,7 @@ class ConnectionPool:
                 password = DB_PASSWORD,
                 database = DB_DATABASE
             )
-            logging.info("Nueva conexión establecida con la base de datos.")
+            logger.info("Nueva conexión establecida con la base de datos.")
             return conn
         except pymssql.OperationalError as e:
             # Maneja errores específicos de la base de datos
@@ -85,7 +87,7 @@ class ConnectionPool:
                     error_msg = str(e).split(',')[2].split(r'\n')[1]
                 except (IndexError, AttributeError):
                     pass
-            logging.critical(f"Error al crear conexión: {error_msg}")
+            logger.critical(f"Error al crear conexión: {error_msg}")
             return None
     
     def get_connection(self) -> ConnectionWrapper:
@@ -100,14 +102,14 @@ class ConnectionPool:
         try:
             # Intenta obtener una conexión del pool sin esperar
             conn = self._pool.get(block=False)
-            logging.debug("Conexión obtenida del pool.")
+            logger.debug("Conexión obtenida del pool.")
             
             # Verifica que la conexión sea válida
             if self._test_connection(conn):
                 return ConnectionWrapper(self, conn)
             else:
                 # Si la conexión no es válida, se crea una nueva
-                logging.warning("Conexión del pool inválida. Creando una nueva.")
+                logger.warning("Conexión del pool inválida. Creando una nueva.")
                 self._active_connections -= 1  # Decrementa las conexiones activas debido a la conexión inválida
                 return self._get_new_connection()
                 
@@ -139,7 +141,7 @@ class ConnectionPool:
                     raise HTTPException(status_code=500, detail="No se puede establecer conexión con la base de datos.")
             else:
                 # Espera hasta que haya espacio en el pool
-                logging.warning("Alcanzado límite de conexiones. Esperando...")
+                logger.warning("Alcanzado límite de conexiones. Esperando...")
                 try:
                     # Intentar obtener una conexión con un tiempo de espera
                     start_time = time.time()
@@ -150,7 +152,7 @@ class ConnectionPool:
                                 return ConnectionWrapper(self, conn)
                             else:
                                 # Si la conexión no es válida, intentamos nuevamente
-                                logging.warning("Conexión del pool inválida.")
+                                logger.warning("Conexión del pool inválida.")
                                 self._active_connections -= 1
                         except queue.Empty:
                             continue
@@ -160,7 +162,7 @@ class ConnectionPool:
                                        detail="Todas las conexiones están en uso. Intente más tarde.")
                                        
                 except Exception as e:
-                    logging.error(f"Error al esperar conexión: {str(e)}")
+                    logger.error(f"Error al esperar conexión: {str(e)}")
                     raise HTTPException(status_code=500, 
                                        detail="Error al obtener conexión de la base de datos.")
     
@@ -181,7 +183,7 @@ class ConnectionPool:
             cursor.close()
             return True
         except Exception:
-            logging.warning("Conexión no válida durante la prueba.")
+            logger.warning("Conexión no válida durante la prueba.")
             try:
                 conn.close()
             except:
@@ -199,10 +201,10 @@ class ConnectionPool:
         if conn is not None:
             try:
                 self._pool.put(conn, block=False)
-                logging.debug("Conexión devuelta al pool.")
+                logger.debug("Conexión devuelta al pool.")
             except queue.Full:
                 # Si el pool está lleno, cerramos la conexión
-                logging.warning("Pool lleno. Cerrando conexión excedente.")
+                logger.warning("Pool lleno. Cerrando conexión excedente.")
                 try:
                     conn.close()
                 except:
@@ -229,4 +231,4 @@ class ConnectionPool:
                 pass
             
             self._active_connections = 0
-            logging.info(f"Pool cerrado. {closed_count} conexiones cerradas.")
+            logger.info(f"Pool cerrado. {closed_count} conexiones cerradas.")

@@ -5,9 +5,10 @@ from gestock_server.schemas.almacen import (
     AlmacenLoginResponse,
     MessageResponse
 )
+import pymssql
 
 import logging
-import pymssql
+logger = logging.getLogger(__name__)
 
 def get_almacenes() -> AlmacenResponse:
     """Ruta para obtener una lista de almacenes con información sobre palets, cajas y productos.
@@ -72,7 +73,7 @@ def get_almacenes() -> AlmacenResponse:
         return AlmacenResponse(almacenes=data)
 
     except pymssql.Error as e:
-        logging.critical(f"ERROR SQL: {e}")
+        logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de base de dades")
 
 def login_almacen(code: int) -> AlmacenLoginResponse:
@@ -112,7 +113,7 @@ def login_almacen(code: int) -> AlmacenLoginResponse:
             
     except pymssql.Error as e:
         # Si ocurre un error al interactuar con la base de datos, se maneja de manera consistente
-        logging.critical(f"ERROR SQL: {e}")
+        logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de base de dades")
 
 def create_almacen(nombre: str, codigo: int) -> MessageResponse:
@@ -151,7 +152,7 @@ def create_almacen(nombre: str, codigo: int) -> MessageResponse:
     
     except pymssql.Error as e:
         # Si ocurre un error en la base de datos, se maneja de manera consistente
-        logging.critical(f"ERROR SQL: {e}")
+        logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de base de dades")
 
 
@@ -189,7 +190,7 @@ def delete_almacen(code: int) -> MessageResponse:
 
     except pymssql.Error as e:
         # Si ocurre un error en la base de datos, se maneja de manera consistente
-        logging.critical(f"ERROR SQL: {e}")
+        logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de la base de dades")
 
     

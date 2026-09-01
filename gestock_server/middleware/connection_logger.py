@@ -2,6 +2,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi import Request, HTTPException, status
 
 import logging
+logger = logging.getLogger(__name__)
 
 
 class ConnectionResetLoggerMiddleware(BaseHTTPMiddleware):
@@ -15,7 +16,7 @@ class ConnectionResetLoggerMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         except ConnectionResetError:
             client_ip = request.client.host
-            logging.warning(f"Conexión perdida con el cliente ({client_ip}) antes de enviar respuesta")
+            logger.warning(f"Conexión perdida con el cliente ({client_ip}) antes de enviar respuesta")
             raise HTTPException(
                 status_code=status.HTTP_406_NOT_ACCEPTABLE
             )

@@ -1,9 +1,9 @@
 from gestock_server.db.database import db_pool
 from gestock_server.schemas.temporada import TemporadasGetResponse
-
-import logging
 import pymssql
 
+import logging
+logger = logging.getLogger(__name__)
 
 def get_temporadas() -> TemporadasGetResponse:
     """
@@ -33,5 +33,5 @@ def get_temporadas() -> TemporadasGetResponse:
             return TemporadasGetResponse(temporadas=temporadas)
 
     except pymssql.Error as e:
-        logging.critical(f"ERROR SQL: {e}")
+        logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de la base de dades")

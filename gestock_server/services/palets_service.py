@@ -6,9 +6,10 @@ from gestock_server.schemas.palet import (
 )
 
 from fastapi import status, HTTPException
+import pymssql
 
 import logging
-import pymssql
+logger = logging.getLogger(__name__)
 
 def get_palets(almacen: int) -> PaletsGetResponse:
     """
@@ -79,7 +80,7 @@ def get_palets(almacen: int) -> PaletsGetResponse:
 
     except pymssql.Error as e:
         # Si ocurre un error en la base de datos, se maneja de manera consistente
-        logging.critical(f"ERROR SQL: {e}")
+        logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de la base de dades")
   
 def create_palet(almacen: int) -> MessageResponse:
@@ -142,7 +143,7 @@ def create_palet(almacen: int) -> MessageResponse:
                 conn.commit()
 
             
-                logging.info(f"CREADO PALET {next_id} EN EL ALMACÉN {almacen}")
+                logger.info(f"CREADO PALET {next_id} EN EL ALMACÉN {almacen}")
                 return MessageResponse(
                     message=f"Palet {next_id} creado"
                 )
@@ -153,7 +154,7 @@ def create_palet(almacen: int) -> MessageResponse:
         
     except pymssql.Error as e:
         # Si ocurre un error en la base de datos, se maneja de manera consistente
-        logging.critical(f"ERROR SQL: {e}")
+        logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de base de dades")
 
 def delete_palet(almacen: int, palet: int) -> MessageResponse:
@@ -198,5 +199,5 @@ def delete_palet(almacen: int, palet: int) -> MessageResponse:
 
     except pymssql.Error as e:
         # Si ocurre un error en la base de datos, se maneja de manera consistente
-        logging.critical(f"ERROR SQL: {e}")
+        logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de la base de dades")

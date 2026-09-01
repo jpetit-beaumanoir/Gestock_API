@@ -6,9 +6,10 @@ from gestock_server.schemas.caja import (
     MessageResponse, 
     CajaGetDescTempResponse
 )
+import pymssql
 
 import logging
-import pymssql
+logger = logging.getLogger(__name__)
 
 def check_caja_exists(
     almacen: int,
@@ -52,7 +53,7 @@ def check_caja_exists(
                 )
 
     except pymssql.Error as e:
-        logging.critical(f"ERROR SQL: {e}")
+        logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de la base de dades")
 
 
@@ -119,7 +120,7 @@ def get_cajas(almacen: int, palet: int) -> CajasGetResponse:
                 return CajasGetResponse(cajas=data)
 
     except pymssql.Error as e:
-        logging.critical(f"ERROR SQL: {e}")
+        logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de la base de dades")
 
 def create_caja(almacen: int, palet: int) -> MessageResponse:
@@ -194,7 +195,7 @@ def create_caja(almacen: int, palet: int) -> MessageResponse:
                 return MessageResponse(message=f"HA CREAT LA CAIXA {next_id} EN EL PALET {palet} MAGATZEM {almacen}")
 
     except pymssql.Error as e:
-        logging.critical(f"ERROR SQL: {e}")
+        logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de la base de dades")  
 
 def delete_caja(almacen: int, palet: int, caja: int) -> MessageResponse:
@@ -237,7 +238,7 @@ def delete_caja(almacen: int, palet: int, caja: int) -> MessageResponse:
                 return MessageResponse(message=f"Caja {caja} del palet {palet}, almacén {almacen} eliminada")
 
     except pymssql.Error as e:
-        logging.critical(f"ERROR SQL: {e}")
+        logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de la base de dades")  
 
 def get_desc_temp_caja(almacen: int, palet: int, caja: int) -> CajaGetDescTempResponse:
@@ -283,7 +284,7 @@ def get_desc_temp_caja(almacen: int, palet: int, caja: int) -> CajaGetDescTempRe
         )
             
     except pymssql.Error as e:
-        logging.critical(f"ERROR SQL: {e}")
+        logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de la base de dades")
 
 def update_desc_temp_caja(
@@ -346,7 +347,7 @@ def update_desc_temp_caja(
         raise ValueError(f"Error de integridad al actualizar la caja {caja}: {e}")
 
     except pymssql.Error as e:
-        logging.critical(f"ERROR SQL: {e}")
+        logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de la base de dades")
     
 def update_cantidad_caja(almacen: int, palet: int, caja: int) -> MessageResponse:
@@ -394,6 +395,6 @@ def update_cantidad_caja(almacen: int, palet: int, caja: int) -> MessageResponse
                 return MessageResponse(message=f"Cambiada la cantidad de la caja {caja}, palet {palet}, almacen {almacen}")
 
     except pymssql.Error as e:
-        logging.critical(f"ERROR SQL: {e}")
+        logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de la base de dades")
     

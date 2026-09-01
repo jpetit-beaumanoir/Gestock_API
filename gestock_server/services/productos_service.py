@@ -3,9 +3,10 @@ from gestock_server.schemas.producto import ProductosGetResponse
 from fastapi import requests
 from gestock_server.config import APIKEY_EXTERNAL
 
+import pymssql
 
 import logging
-import pymssql
+logger = logging.getLogger(__name__)
 
 async def get_products_values(ean: str, codemag: int):
     """
@@ -84,7 +85,7 @@ async def get_products_values(ean: str, codemag: int):
                 )
 
     except pymssql.Error as e:
-        logging.critical(f"ERROR SQL: {e}")
+        logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de la base de dades")
 
 async def get_product_external_API(ean: str, codigo_almacen: int):
@@ -177,14 +178,14 @@ async def get_product_external_API(ean: str, codigo_almacen: int):
                     
                     
                     # Log para registrar el éxito de la operación
-                    logging.info(f"OBTENIDOS LOS DATOS EL PRODUCTO {ean}")
+                    logger.info(f"OBTENIDOS LOS DATOS EL PRODUCTO {ean}")
                     
                     # Devolver los datos del producto en formato JSON
                     return product_data
 
         except Exception as e:
             # En caso de error en la solicitud o conexión con la API
-            logging.error(f"ERROR EN LA API EXTERNA: {e}")
+            logger.error(f"ERROR EN LA API EXTERNA: {e}")
             raise ConnectionError(f"Error con la comunicación de la API externa")
    
     return None

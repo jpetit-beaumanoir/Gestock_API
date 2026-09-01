@@ -1,9 +1,9 @@
 from gestock_server.db.database import db_pool
 from gestock_server.schemas.familia import FamiliasGetResponse
-
-import logging
 import pymssql
 
+import logging
+logger = logging.getLogger(__name__)
 
 def get_familias() -> FamiliasGetResponse:
     """
@@ -45,5 +45,5 @@ def get_familias() -> FamiliasGetResponse:
             return FamiliasGetResponse(familias=familias)
 
     except pymssql.Error as e:
-        logging.critical(f"ERROR SQL: {e}")
+        logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de la base de dades")
