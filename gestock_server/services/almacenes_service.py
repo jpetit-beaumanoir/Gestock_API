@@ -156,7 +156,7 @@ def create_almacen(nombre: str, codigo: int) -> MessageResponse:
         raise ConnectionError("Error de base de dades")
 
 
-def delete_almacen(code: int) -> MessageResponse:
+def delete_almacen(codigo: int) -> MessageResponse:
     """
     Elimina un almacén de la base de datos por su código.
     
@@ -179,10 +179,10 @@ def delete_almacen(code: int) -> MessageResponse:
         with db_pool.get_connection() as conn:
             with conn.cursor() as cursor:
                 # Ejecuta la consulta para eliminar el almacén con el código proporcionado
-                cursor.execute("DELETE FROM almacenes WHERE codigo = %s", (code,))
+                cursor.execute("DELETE FROM almacenes WHERE codigo = %s", (codigo,))
                 conn.commit()
                     
-                return MessageResponse(message=f"Magatzem '{code}' eliminat.")
+                return MessageResponse(message=f"Magatzem '{codigo}' eliminat.")
                 
     except pymssql.IntegrityError:
         # Si el almacén tiene elementos asignados, lanza un error 409 indicando que se debe vaciar antes de eliminarlo

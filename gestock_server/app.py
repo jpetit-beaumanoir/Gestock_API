@@ -1,6 +1,5 @@
 from fastapi import FastAPI
 
-import os
 from gestock_server.logging_config import setup_logging
 
 from gestock_server.routes.auth import router as auth_router
@@ -10,6 +9,7 @@ from gestock_server.routes.cajas import router as cajas_router
 from gestock_server.routes.stock import router as stock_router
 from gestock_server.routes.familias import router as familias_router
 from gestock_server.routes.temporadas import router as temporadas_router
+from gestock_server.routes.productos import router as productos_router
 
 from gestock_server.middleware.apikey import APIKeyMiddleware
 from gestock_server.middleware.connection_logger import (
@@ -42,9 +42,7 @@ app.include_router(cajas_router)
 app.include_router(stock_router)
 app.include_router(familias_router)
 app.include_router(temporadas_router)
-
-os.system("cls")
-print("APP GESTOCK CARGADA")
+app.include_router(productos_router)
 
 # En el cmd a la carpeta pare de gestock_server
 #uvicorn gestock_server.app:app --reload

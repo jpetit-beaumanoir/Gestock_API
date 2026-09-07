@@ -19,7 +19,7 @@ class StockMoveRequest(BaseModel):
     ids: conlist(int)
 
 class StockInfo(BaseModel):
-    id: int
+    ids: list[int]
     nombre: str
     color: str
     talla: str

@@ -5,7 +5,6 @@ from gestock_server.schemas.almacen import (
     AlmacenResponse, 
     AlmacenLoginResponse, 
     AlmacenCreateRequest,
-    AlmacenDeleteRequest,
     MessageResponse
 )
 from gestock_server.security.permissions import require_role
@@ -28,7 +27,7 @@ async def get_almacenes(request: Request):
 
         result = almacenes_service.get_almacenes()
 
-        logger.info(f"{request.state.user} CONSULTALTS ELS MAGATZEMS EXISTENTS ({request.client.host})")
+        logger.info(f"{request.state.user} HA CONSULTAT ELS MAGATZEMS EXISTENTS ({request.client.host})")
 
         return result
 
@@ -51,12 +50,12 @@ async def login_almacen(
 
     try:
         result = almacenes_service.login_almacen(codigo)
-        logger.info(f"{request.state.user} HA ACCEDIT AL MAGATZEM {codigo} DES DE {request.client.host}")
+        logger.info(f"{request.state.user} HA ACCEDIT AL MAGATZEM {codigo} ({request.client.host})")
 
         return result
         
     except ValueError:
-        logger.warning(f"{request.state.user} INTENT D'ACCEDIR A UN MAGATZEM INNEXISTENT {codigo} DES DE {request.client.host}")
+        logger.warning(f"{request.state.user} INTENT D'ACCEDIR A UN MAGATZEM INNEXISTENT {codigo} ({request.client.host})")
 
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -87,7 +86,7 @@ async def crear_almacen(
         )
 
         logger.info(
-            f"{request.state.user} HA CREAT EL MAGATZEM {data.code} ({request.client.host})"
+            f"{request.state.user} HA CREAT EL MAGATZEM {data.codigo} ({request.client.host})"
         )
 
         return result
@@ -95,18 +94,18 @@ async def crear_almacen(
     except ValueError:
 
         logger.warning(
-            f"{request.state.user} HA INTENTAT CREAR UN MAGATZEM DUPLICAT {data.code} ({request.client.host})"
+            f"{request.state.user} HA INTENTAT CREAR UN MAGATZEM DUPLICAT {data.codigo} ({request.client.host})"
         )
 
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Ja existeix un magatzem amb codi {data.code}"
+            detail=f"Ja existeix un magatzem amb codi {data.codigo}"
         )
 
     except ConnectionError:
 
         logger.error(
-            f"ERROR DE BD CREANT EL MAGATZEM {data.code}"
+            f"ERROR DE BD CREANT EL MAGATZEM {data.codigo}"
         )
 
         raise HTTPException(
@@ -117,21 +116,21 @@ async def crear_almacen(
 @router.delete("/delete", response_model=MessageResponse)
 async def delete_almacen(
     request: Request, 
-    data: AlmacenDeleteRequest
+    codigo: int
 ):
     try:
     
-        result = almacenes_service.delete_almacen(data.codigo)
+        result = almacenes_service.delete_almacen(codigo)
 
         logger.info(
-            f"{request.state.user} HA ELIMINAT EL MAGATZEM {data.codigo} ({request.client.host})"
+            f"{request.state.user} HA ELIMINAT EL MAGATZEM {codigo} ({request.client.host})"
         )
 
         return result
     
     except ValueError:
 
-        logger.warning(f"{request.state.user} HA INTENTAT ELIMINAR UN MAGATZEM AMB ELEMENTS A DINTRE {data.codigo} ({request.client.host})")
+        logger.warning(f"{request.state.user} HA INTENTAT ELIMINAR UN MAGATZEM AMB ELEMENTS A DINTRE {codigo} ({request.client.host})")
 
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -141,7 +140,7 @@ async def delete_almacen(
     except ConnectionError:
 
         logger.error(
-            f"ERROR DE BD ELIMINANT EL MAGATZEM {data.codigo}"
+            f"ERROR DE BD ELIMINANT EL MAGATZEM {codigo}"
         )
 
         raise HTTPException(

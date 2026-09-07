@@ -1,4 +1,7 @@
+from dotenv import load_dotenv
 from os import getenv
+
+load_dotenv(r"gestock_server\gestock.env")
 
 DB_SERVER = getenv("DB_SERVER")
 DB_USER = getenv("DB_USER")

@@ -32,7 +32,7 @@ def get_stock_caja(almacen: int, palet: int, caja: int) -> StockGetResponse:
     Raises:
         HTTPException: Si ocurre un error al consultar la base de datos.
     """
-    data = {}
+    data:dict[str, StockInfo] = {}
 
     try:
 
@@ -43,7 +43,7 @@ def get_stock_caja(almacen: int, palet: int, caja: int) -> StockGetResponse:
                     """
                         SELECT s.id, p.ean, p.nombre, p.color, p.talla, p.temporada
                         FROM stock s 
-                        JOIN productos p ON s.ean = p.ean 
+                        LEFT JOIN productos p ON s.ean = p.ean 
                         WHERE s.almacen = %s AND s.palet = %s AND s.caja = %s
                         ORDER BY s.ean
                     """,
@@ -54,27 +54,32 @@ def get_stock_caja(almacen: int, palet: int, caja: int) -> StockGetResponse:
 
                 # Si no hay productos en la caja, se devuelve un JSON con stock vacío y cantidad total 0
                 if not stock:
-                    return StockGetResponse(stock=data, total=0)
+                    return StockGetResponse(stock={}, total=0)
 
                 # Procesamiento de los resultados obtenidos
                 for row_stock in stock:
                     id_producto, ean, nombre, color, talla, temporada = row_stock
 
+                    ean = str(ean).strip()
+
                     # Verificar si el EAN ya existe en el diccionario 'data' y agregar la cantidad
                     if ean in data.keys():
-                        data[ean]["cantidad"] += 1
-                        data[ean]["id"].append(id_producto)
+                        data[ean].cantidad += 1
+                        data[ean].ids.append(id_producto)
 
                     else:
                         # Si es un EAN nuevo, se agrega una entrada en el diccionario
                         data[str(ean)] = StockInfo(
-                            id=id_producto,
-                            nombre=nombre,
-                            color=color,
-                            talla=talla,
-                            temporada=temporada,
+                            ids=[id_producto],
+                            nombre=nombre or "??",
+                            color=color or "??",
+                            talla=talla or "??",
+                            temporada=temporada or "??",
                             cantidad=1
                         )
+
+                        if nombre is None:
+                            logger.warning(f"NO S'HA TROBAT INFORMACIÓ DEL PRODUCTE {ean} A LA TAULA PRODUCTES")
                         
 
                 # Se devuelve el stock y la cantidad total de productos en la caja

@@ -12,14 +12,9 @@ class AlmacenResponse(BaseModel):
 class AlmacenLoginResponse(BaseModel):
     nombre: str
 
-
 class AlmacenCreateRequest(BaseModel):
     nombre: str
-    codigo: int
-
-
-class AlmacenDeleteRequest(BaseModel):
-    codigo: int
+    codigo: int    
 
 class MessageResponse(BaseModel):
     message: str

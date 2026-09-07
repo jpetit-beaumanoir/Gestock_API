@@ -192,7 +192,9 @@ def create_caja(almacen: int, palet: int) -> MessageResponse:
 
                 conn.commit()
    
-                return MessageResponse(message=f"HA CREAT LA CAIXA {next_id} EN EL PALET {palet} MAGATZEM {almacen}")
+                return MessageResponse(
+                    message=f"HA CREAT LA CAIXA {next_id} EN EL PALET {palet} MAGATZEM {almacen}"
+                )
 
     except pymssql.Error as e:
         logger.critical(f"ERROR SQL: {e}")

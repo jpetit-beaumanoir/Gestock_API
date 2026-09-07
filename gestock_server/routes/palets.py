@@ -58,7 +58,9 @@ async def create_palet(
             f"{request.state.user} HA CREAT EL PALET {data.almacen} ({request.client.host})"
         )
 
-        return result
+        return MessageResponse(
+            message="Palet creat correctament"
+        )
 
     except ValueError as e:
 

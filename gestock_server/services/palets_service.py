@@ -143,9 +143,8 @@ def create_palet(almacen: int) -> MessageResponse:
                 conn.commit()
 
             
-                logger.info(f"CREADO PALET {next_id} EN EL ALMACÉN {almacen}")
                 return MessageResponse(
-                    message=f"Palet {next_id} creado"
+                    message=f"HA CREAT EL PALET {next_id} EN EL MAGATZEM {almacen}"
                 )
                 
     except pymssql.IntegrityError:

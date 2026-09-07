@@ -11,3 +11,6 @@ class ProductosGetResponse(BaseModel):
     prmp: float
     temporada: str
     marca: str
+
+class MessageResponse(BaseModel):
+    message: str

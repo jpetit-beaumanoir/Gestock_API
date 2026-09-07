@@ -34,13 +34,13 @@ async def get_caixes(
             palet=palet
         )
         
-        logger.info(f"{request.state.user} HA LLISTAT LES {len(result.cajas)} CAIXES DEL PALET {palet} ALMACÉN {almacen} ({request.client.host})")
+        logger.info(f"{request.state.user} HA LLISTAT LES {len(result.cajas)} CAIXES DEL PALET {palet} MAGATZEM {almacen} ({request.client.host})")
 
         return result
 
     except ConnectionError:
         logger.error(
-            f"ERROR DE BD OBTENINT LLISTA DE CAIXES DEL PALET {palet} ALMACÉN {almacen}"
+            f"ERROR DE BD OBTENINT LLISTA DE CAIXES DEL PALET {palet} MAGATZEM {almacen}"
         )
 
         raise HTTPException(
@@ -64,7 +64,9 @@ async def create_caixa(
             f"{request.state.user} {result.message} ({request.client.host})"
         )
 
-        return result
+        return MessageResponse(
+            message="Caixa creada correctament"
+        )
 
     except ConnectionError:
 

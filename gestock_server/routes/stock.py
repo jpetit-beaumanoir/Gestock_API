@@ -55,7 +55,7 @@ async def add_stock(
     data: StockAddRequest
 ):
     try:
-        result = await stock_service.add_stock(
+        result = stock_service.add_stock(
             body=data
         )
 
@@ -90,7 +90,7 @@ async def delete_stock(
     data: StockDeleteRequest
 ):
     try:
-        result = await stock_service.delete_stock(
+        result =  stock_service.delete_stock(
             body=data
         )
 
@@ -125,7 +125,7 @@ async def move_stock(
     data: StockMoveRequest
 ):
     try:
-        result = await stock_service.move_stock(
+        result =  stock_service.move_stock(
             body=data
         )
 
@@ -189,3 +189,4 @@ async def export_stock(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Error de conexió amb la base de dades"
         )
+
