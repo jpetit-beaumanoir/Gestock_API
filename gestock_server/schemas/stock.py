@@ -1,21 +1,33 @@
-from pydantic import BaseModel, conlist
+from pydantic import BaseModel, conlist, ConfigDict
 
 # almacen = codi_centre (texto)
 
 
 class StockAddRequest(BaseModel):
+    # Acepta el código de almacén como número o como texto (9999 o "9999"):
+    # la app puede seguir enviando números mientras se adapta a codi_centre (texto)
+    model_config = ConfigDict(coerce_numbers_to_str=True)
+
     almacen: str
     palet: int
     caja: int
     eans: conlist(str)
 
 class StockDeleteRequest(BaseModel):
+    # Acepta el código de almacén como número o como texto (9999 o "9999"):
+    # la app puede seguir enviando números mientras se adapta a codi_centre (texto)
+    model_config = ConfigDict(coerce_numbers_to_str=True)
+
     almacen: str
     palet: int
     caja: int
     ids: conlist(int)
 
 class StockMoveRequest(BaseModel):
+    # Acepta el código de almacén como número o como texto (9999 o "9999"):
+    # la app puede seguir enviando números mientras se adapta a codi_centre (texto)
+    model_config = ConfigDict(coerce_numbers_to_str=True)
+
     almacen: str      # destino
     palet: int        # destino
     caja: int         # destino
