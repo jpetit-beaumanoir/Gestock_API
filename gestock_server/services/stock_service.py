@@ -1,241 +1,277 @@
+"""
+Stock de Gestock: tabla `gestock_stock`. Una fila = una unidad de producto dentro de una caja.
+
+Columnas: id, ean, codi_centre, palet, caixa, data_alta (la pone la BDD) e id_usuari (obligatorio).
+`gestock_caixes.quantitat` se actualiza sola con los triggers al insertar, mover o borrar stock.
+"""
 from gestock_server.db.database import db_pool
+from gestock_server.db.driver import DBError, IntegrityError
+from gestock_server.config import USUARIS_APLICACIO
 from gestock_server.schemas.stock import (
-    StockAddRequest, 
-    StockDeleteRequest, 
-    StockMoveRequest, 
-    StockGetResponse, 
-    StockInfo, 
+    StockAddRequest,
+    StockDeleteRequest,
+    StockMoveRequest,
+    StockGetResponse,
+    StockInfo,
     StockExportResponse,
     MessageResponse
 )
-import pymssql
 
 import logging
 logger = logging.getLogger(__name__)
 
-def get_stock_caja(almacen: int, palet: int, caja: int) -> StockGetResponse:
+
+def _placeholders(n: int) -> str:
+    """'%s, %s, ...' para usar en IN (...)."""
+    return ", ".join(["%s"] * n)
+
+
+def _get_id_usuari(cursor, nom_usuari: str) -> int:
     """
-    Obtiene el stock de productos en una caja específica, identificada por su almacen, palet y caja.
-
-    La función consulta la base de datos para obtener el stock asociado a un producto en particular
-    dentro de una caja, palet y almacen específicos. Si encuentra coincidencias, las agrupa por EAN,
-    sumando la cantidad de cada producto dentro de la caja.
-
-    Args:
-        almacen (int): El código del almacen donde se encuentra el stock.
-        palet (int): El código del palet donde se encuentra la caja.
-        caja (int): El código de la caja que contiene el stock.
-
-    Returns:
-        JSONResponse: Un objeto JSON con el stock y la cantidad total de productos en la caja.
+    Busca el id_usuari del usuario de la API (nombre asociado a la API key) en la tabla usuaris.
 
     Raises:
-        HTTPException: Si ocurre un error al consultar la base de datos.
+        PermissionError: si el usuario no existe en usuaris o está desactivado (403).
     """
-    data:dict[str, StockInfo] = {}
+    cursor.execute(
+        """
+        SELECT id_usuari
+        FROM usuaris
+        WHERE aplicacio = %s
+          AND nom_usuari = %s
+          AND actiu = 1
+        """,
+        (USUARIS_APLICACIO, nom_usuari)
+    )
+    row = cursor.fetchone()
+
+    if row is None:
+        raise PermissionError(
+            f"L'usuari '{nom_usuari}' no existeix o no està actiu a la taula usuaris "
+            f"(aplicacio = '{USUARIS_APLICACIO}')"
+        )
+
+    return int(row[0])
+
+
+def _check_caixa(cursor, almacen: str, palet: int, caja: int) -> None:
+    """
+    Raises:
+        LookupError: si la caja no existe (404).
+    """
+    cursor.execute(
+        "SELECT 1 FROM gestock_caixes WHERE codi_centre = %s AND palet = %s AND caixa = %s",
+        (almacen, palet, caja)
+    )
+    if cursor.fetchone() is None:
+        raise LookupError(f"La caixa {caja} del palet {palet} del magatzem {almacen} no existeix")
+
+
+def get_stock_caja(almacen: str, palet: int, caja: int) -> StockGetResponse:
+    """
+    Devuelve el stock de una caja agrupado por EAN (con los ids de cada unidad).
+
+    Raises:
+        ConnectionError: si ocurre un error con la base de datos.
+    """
+    data: dict[str, StockInfo] = {}
 
     try:
-
         with db_pool.get_connection() as conn:
-            # Se realiza la consulta SQL a la base de datos para obtener el stock de la caja especificada
             with conn.cursor() as cursor:
                 cursor.execute(
                     """
-                        SELECT s.id, p.ean, p.nombre, p.color, p.talla, p.temporada
-                        FROM stock s 
-                        LEFT JOIN productos p ON s.ean = p.ean 
-                        WHERE s.almacen = %s AND s.palet = %s AND s.caja = %s
-                        ORDER BY s.ean
+                    SELECT s.id, s.ean, p.nom, p.color, p.talla, p.temporada
+                    FROM gestock_stock s
+                    LEFT JOIN productes p ON s.ean = p.ean
+                    WHERE s.codi_centre = %s AND s.palet = %s AND s.caixa = %s
+                    ORDER BY s.ean, s.id
                     """,
-                    (almacen, palet, caja,)
+                    (almacen, palet, caja)
                 )
-
                 stock = cursor.fetchall()
 
-                # Si no hay productos en la caja, se devuelve un JSON con stock vacío y cantidad total 0
-                if not stock:
-                    return StockGetResponse(stock={}, total=0)
+        if not stock:
+            return StockGetResponse(stock={}, total=0)
 
-                # Procesamiento de los resultados obtenidos
-                for row_stock in stock:
-                    id_producto, ean, nombre, color, talla, temporada = row_stock
+        for id_producto, ean, nombre, color, talla, temporada in stock:
+            ean = str(ean).strip()
 
-                    ean = str(ean).strip()
+            if ean in data:
+                data[ean].cantidad += 1
+                data[ean].ids.append(id_producto)
+            else:
+                data[ean] = StockInfo(
+                    ids=[id_producto],
+                    nombre=nombre or "??",
+                    color=color or "??",
+                    talla=talla or "??",
+                    temporada=temporada or "??",
+                    cantidad=1
+                )
 
-                    # Verificar si el EAN ya existe en el diccionario 'data' y agregar la cantidad
-                    if ean in data.keys():
-                        data[ean].cantidad += 1
-                        data[ean].ids.append(id_producto)
+                if nombre is None:
+                    logger.warning(f"NO S'HA TROBAT INFORMACIÓ DEL PRODUCTE {ean} A LA TAULA PRODUCTES")
 
-                    else:
-                        # Si es un EAN nuevo, se agrega una entrada en el diccionario
-                        data[str(ean)] = StockInfo(
-                            ids=[id_producto],
-                            nombre=nombre or "??",
-                            color=color or "??",
-                            talla=talla or "??",
-                            temporada=temporada or "??",
-                            cantidad=1
-                        )
+        return StockGetResponse(stock=data, total=len(stock))
 
-                        if nombre is None:
-                            logger.warning(f"NO S'HA TROBAT INFORMACIÓ DEL PRODUCTE {ean} A LA TAULA PRODUCTES")
-                        
-
-                # Se devuelve el stock y la cantidad total de productos en la caja
-                return StockGetResponse(stock=data, total=len(stock))
-
-    except pymssql.Error as e:
+    except DBError as e:
         logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de la base de dades")
 
-def add_stock(body: StockAddRequest) -> MessageResponse:
+
+def add_stock(body: StockAddRequest, usuario: str) -> MessageResponse:
     """
-    Agrega múltiples productos al stock en la base de datos.
-    
-    Recibe una lista de EANs y agrega los productos correspondientes a la base de datos 
-    en la caja, palet y almacén especificados.
+    Añade unidades de producto a una caja. Cada EAN de la lista es una unidad.
 
     Args:
-        request (AddStockRequest): Datos de entrada con el almacén, palet, caja, y la lista de EANs.
+        body: almacén, palet, caja y lista de EAN.
+        usuario: nombre del usuario de la API (request.state.user), se guarda su id_usuari.
 
-    Returns:
-        dict: Respuesta indicando la cantidad de productos añadidos con éxito.
-    
     Raises:
-        HTTPException: Si la lista de EANs está vacía o ocurre un error con la base de datos.
+        ValueError: lista vacía o EAN que no existen en productes (400).
+        LookupError: la caja no existe (404).
+        PermissionError: el usuario no existe en usuaris (403).
+        ConnectionError: si ocurre un error con la base de datos.
     """
+    eans = [str(ean).strip() for ean in body.eans if str(ean).strip()]
 
-    # Validar que la lista de EANs no esté vacía
-    if not isinstance(body.eans, list) or len(body.eans) == 0:
+    if not eans:
         raise ValueError("La lista de productes (EANs) no pot estar buida.")
 
     try:
-
-        # Conexión a la base de datos
         with db_pool.get_connection() as conn:
             with conn.cursor() as cursor:
 
-                # Preparamos los datos para la inserción masiva
-                stock_data = [(ean, body.caja, body.palet, body.almacen) for ean in body.eans]
+                _check_caixa(cursor, body.almacen, body.palet, body.caja)
+                id_usuari = _get_id_usuari(cursor, usuario)
 
-                # Consulta SQL para insertar los productos
-                insert_query = """
-                    INSERT INTO stock (ean, caja, palet, almacen) VALUES (%s, %s, %s, %s)
-                """
-                
-                # Ejecutamos la inserción masiva
-                cursor.executemany(insert_query, stock_data)
+                # gestock_stock.ean tiene FK a productes: comprobar antes para dar un error claro
+                unique_eans = sorted(set(eans))
+                cursor.execute(
+                    f"SELECT ean FROM productes WHERE ean IN ({_placeholders(len(unique_eans))})",
+                    unique_eans
+                )
+                existentes = {row[0] for row in cursor.fetchall()}
+                no_existen = [ean for ean in unique_eans if ean not in existentes]
 
+                if no_existen:
+                    raise ValueError(
+                        "Aquests EAN no existeixen al catàleg (productes): " + ", ".join(no_existen)
+                    )
+
+                stock_data = [
+                    (ean, body.almacen, body.palet, body.caja, id_usuari)
+                    for ean in eans
+                ]
+
+                cursor.executemany(
+                    """
+                    INSERT INTO gestock_stock (ean, codi_centre, palet, caixa, id_usuari)
+                    VALUES (%s, %s, %s, %s, %s)
+                    """,
+                    stock_data
+                )
                 insertados = cursor.rowcount
-                
-                # Confirmamos la transacción
+
                 conn.commit()
 
                 return MessageResponse(message=f"Insertados {insertados} productos con éxito.")
 
-    except pymssql.Error as e:
+    except IntegrityError as e:
+        logger.warning(f"ERROR D'INTEGRITAT AFEGINT STOCK: {e}")
+        raise ValueError("No s'ha pogut afegir l'estoc: la caixa, algun EAN o l'usuari no existeixen")
+
+    except DBError as e:
         logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de la base de dades")
+
 
 def delete_stock(body: StockDeleteRequest) -> MessageResponse:
     """
-    Elimina múltiples productos del stock en la base de datos.
+    Elimina unidades de stock por id. Solo borra las que pertenecen a la caja indicada.
 
-    Recibe una lista de IDs de productos y los elimina de la base de datos en la caja, palet y almacén especificados.
-
-    Args:
-        request (DeleteStockRequest): Datos de entrada con el almacén, palet, caja, y la lista de IDs de los productos.
-
-    Returns:
-        dict: Respuesta indicando la cantidad de productos eliminados con éxito.
-    
     Raises:
-        HTTPException: Si la lista de IDs está vacía o ocurre un error con la base de datos.
+        ValueError: lista vacía (400).
+        ConnectionError: si ocurre un error con la base de datos.
     """
-
-    # Validar que la lista de IDs no esté vacía
-    if not isinstance(body.ids, list) or len(body.ids) == 0:
-        raise ValueError("La lista de productes (EANs) no pot estar buida.")
-
-    # Conexión a la base de datos
-    try:
-
-        with db_pool.get_connection() as conn:
-            with conn.cursor() as cursor:
-                # Preparamos los datos para la eliminación masiva
-                stock_data = [(id,) for id in body.ids]
-
-                # Consulta SQL para eliminar los productos
-                cursor.executemany("DELETE FROM stock WHERE id = %s", stock_data)
-
-                # Obtenemos la cantidad de productos eliminados
-                eliminados = cursor.rowcount
-
-                # Confirmamos la transacción
-                conn.commit()
-
-                # Log para indicar éxito en la operación
-                return MessageResponse(message=f"Eliminados {eliminados} productos con éxito.")
-
-    except pymssql.Error as e:
-        logger.critical(f"ERROR SQL: {e}")
-        raise ConnectionError("Error de la base de dades")
-
-def move_stock(body: StockMoveRequest) -> MessageResponse:
-    """
-    Mueve productos dentro del stock de una caja/palet a otra.
-
-    Recibe una lista de IDs de productos y los mueve dentro del almacén, palet y caja especificados.
-
-    Args:
-        request (MoveStockRequest): Datos de entrada con el almacén, palet, caja, y la lista de IDs de los productos.
-
-    Returns:
-        dict: Respuesta indicando la cantidad de productos movidos con éxito.
-    
-    Raises:
-        HTTPException: Si la lista de IDs está vacía, la caja destino no existe, o si ocurre un error con la base de datos.
-    """
-
-    # Validar que la lista de productos no esté vacía
     if not body.ids:
         raise ValueError("La lista de productes no pot estar buida.")
 
     try:
-
-        # Conexión a la base de datos
         with db_pool.get_connection() as conn:
             with conn.cursor() as cursor:
-                # Verificar si la caja destino existe en la base de datos
                 cursor.execute(
-                    "SELECT 1 FROM cajas WHERE caja = %s AND palet = %s AND almacen = %s",
-                    (body.caja, body.palet, body.almacen)
+                    f"""
+                    DELETE FROM gestock_stock
+                    WHERE id IN ({_placeholders(len(body.ids))})
+                      AND codi_centre = %s
+                      AND palet = %s
+                      AND caixa = %s
+                    """,
+                    [*body.ids, body.almacen, body.palet, body.caja]
                 )
+                eliminados = cursor.rowcount
 
-                # Construir los datos para la actualización del movimiento de stock
-                stock_data = [(body.palet, body.caja, id) for id in body.ids]
-
-                # Consulta SQL para mover los productos
-                update_query = "UPDATE stock SET palet = %s, caja = %s WHERE id = %s"
-                cursor.executemany(update_query, stock_data)
-
-                # Obtener el número de productos movidos
-                moved_count = cursor.rowcount
-
-                # Confirmar la transacción
                 conn.commit()
 
-                # Log para indicar éxito en la operación
-                return MessageResponse(message=f"Movidos {moved_count} productos con éxito.")
+                if eliminados < len(set(body.ids)):
+                    logger.warning(
+                        f"S'HAN DEMANAT ELIMINAR {len(set(body.ids))} IDS PERÒ NOMÉS {eliminados} "
+                        f"ERAN A LA CAIXA {body.caja} PALET {body.palet} MAGATZEM {body.almacen}"
+                    )
 
-    except pymssql.Error as e:
+                return MessageResponse(message=f"Eliminados {eliminados} productos con éxito.")
+
+    except DBError as e:
         logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de la base de dades")
-    
+
+
+def move_stock(body: StockMoveRequest) -> MessageResponse:
+    """
+    Mueve unidades de stock (por id) a la caja de destino indicada (almacén, palet, caja).
+    Los triggers recalculan la cantidad de la caja de origen y de la de destino.
+
+    Raises:
+        ValueError: lista vacía (400).
+        LookupError: la caja de destino no existe (404).
+        ConnectionError: si ocurre un error con la base de datos.
+    """
+    if not body.ids:
+        raise ValueError("La lista de productes no pot estar buida.")
+
+    try:
+        with db_pool.get_connection() as conn:
+            with conn.cursor() as cursor:
+
+                _check_caixa(cursor, body.almacen, body.palet, body.caja)
+
+                cursor.execute(
+                    f"""
+                    UPDATE gestock_stock
+                    SET codi_centre = %s, palet = %s, caixa = %s
+                    WHERE id IN ({_placeholders(len(body.ids))})
+                    """,
+                    [body.almacen, body.palet, body.caja, *body.ids]
+                )
+                moved_count = cursor.rowcount
+
+                conn.commit()
+
+                return MessageResponse(message=f"Movidos {moved_count} productos con éxito.")
+
+    except IntegrityError as e:
+        logger.warning(f"ERROR D'INTEGRITAT MOVENT STOCK: {e}")
+        raise ValueError("No s'ha pogut moure l'estoc a la caixa indicada")
+
+    except DBError as e:
+        logger.critical(f"ERROR SQL: {e}")
+        raise ConnectionError("Error de la base de dades")
+
 
 def filtered_search(
-    almacen: int,
+    almacen: str,
     ean: str | None = None,
     talla: str | None = None,
     nombre: str | None = None,
@@ -243,88 +279,77 @@ def filtered_search(
     color: str | None = None,
     temporada: str | None = None
 ) -> StockExportResponse:
-
     """
-    Realiza una búsqueda filtrada de productos en un almacén específico. Los filtros incluyen 
-    EAN, talla, nombre, familia, color y temporada.
-
-    Args:
-        almacen (int): El código del almacén donde se realizará la búsqueda.
-        ean (str, opcional): EAN del producto para filtrar.
-        talla (str, opcional): Talla del producto para filtrar.
-        nombre (str, opcional): Nombre del producto para filtrar.
-        familia (str, opcional): Familia del producto para filtrar.
-        color (str, opcional): Color del producto para filtrar.
-        temporada (str, opcional): Temporada del producto para filtrar.
-
-    Returns:
-        JSONResponse: Lista de productos que coinciden con los filtros aplicados.
+    Búsqueda filtrada del stock de un almacén para exportar.
+    Filtros opcionales: EAN, talla, nombre, familia (lista separada por comas), color y temporada.
 
     Raises:
-        HTTPException: Si ocurre un error en la base de datos durante la consulta.
+        ConnectionError: si ocurre un error con la base de datos.
     """
-    
     try:
-        # Establecer conexión a la base de datos
         with db_pool.get_connection() as conn:
             with conn.cursor() as cursor:
-                # Consulta base para obtener productos con los campos relevantes
+                # Los campos de texto pueden ser NULL en la BDD nueva: COALESCE para no romper el schema
                 query = """
-                    SELECT 
-                        s.ean, s.palet, s.caja, c.descripcion  AS desc_caja, c.temporada  AS temp_caja, s.almacen, 
-                        p.talla, p.nombre, p.familia, p.subfamilia, 
-                        p.color, p.temporada, 
-                        CAST(p.pvp AS FLOAT) AS pvp, 
-                        CAST(p.prmp AS FLOAT) AS prmp, 
-                        p.marca
-                    FROM stock s
-                    JOIN productos p ON s.ean = p.ean
-                    JOIN cajas c ON s.caja = c.caja AND s.palet = c.palet AND s.almacen = c.almacen
-                    WHERE s.almacen = %s
+                    SELECT
+                        s.ean,
+                        s.palet,
+                        s.caixa                          AS caja,
+                        COALESCE(c.descripcio, '')       AS desc_caja,
+                        COALESCE(c.temporada, '')        AS temp_caja,
+                        s.codi_centre                    AS almacen,
+                        COALESCE(p.talla, '??')          AS talla,
+                        COALESCE(p.nom, '??')            AS nombre,
+                        COALESCE(p.familia, '??')        AS familia,
+                        COALESCE(p.subfamilia, '??')     AS subfamilia,
+                        COALESCE(p.color, '??')          AS color,
+                        COALESCE(p.temporada, '??')      AS temporada,
+                        p.pvp                            AS pvp,
+                        0                                AS prmp,
+                        p.marca                          AS marca
+                    FROM gestock_stock s
+                    JOIN productes p
+                        ON s.ean = p.ean
+                    JOIN gestock_caixes c
+                        ON s.codi_centre = c.codi_centre
+                       AND s.palet = c.palet
+                       AND s.caixa = c.caixa
+                    WHERE s.codi_centre = %s
                 """
-                
-                # Lista para almacenar los parámetros de consulta
-                query_params = [almacen]
 
-                # Filtrar por EAN si se proporciona
+                query_params: list = [almacen]
+
                 if ean:
                     query += " AND p.ean = %s"
                     query_params.append(ean)
 
-                # Filtrar por nombre si se proporciona
                 if nombre:
-                    query += " AND LOWER(p.nombre) LIKE %s"
+                    query += " AND LOWER(p.nom) LIKE %s"
                     query_params.append(f"%{nombre.lower()}%")
 
-                # Filtrar por talla si se proporciona
                 if talla:
                     query += " AND LOWER(p.talla) LIKE %s"
                     query_params.append(f"%{talla.lower()}%")
 
-                # Filtrar por familia si se proporciona (se permite lista separada por comas)
+                # Familia: se permite lista separada por comas
                 if familia:
                     for fam in familia.split(","):
-                        if fam.strip():  # Evitar filtros vacíos
-                            query += " AND LTRIM(RTRIM(p.familia)) LIKE %s"
+                        if fam.strip():
+                            query += " AND LOWER(TRIM(p.familia)) LIKE %s"
                             query_params.append(f"%{fam.strip().lower()}%")
 
-                # Filtrar por color si se proporciona
                 if color:
                     query += " AND LOWER(p.color) LIKE %s"
                     query_params.append(f"%{color.lower()}%")
 
-                # Filtrar por temporada si se proporciona
                 if temporada:
-                    query += " AND LTRIM(RTRIM(p.temporada)) LIKE LOWER(%s)"
+                    query += " AND LOWER(TRIM(p.temporada)) LIKE %s"
                     query_params.append(f"%{temporada.lower()}%")
 
-                # Ordenar los resultados por EAN
                 query += " ORDER BY p.ean"
 
-                # Ejecutar la consulta con los parámetros dinámicos
                 cursor.execute(query, tuple(query_params))
 
-                # Obtener los nombres de las columnas de la consulta
                 columns = [col[0] for col in cursor.description]
 
                 results = [
@@ -336,7 +361,6 @@ def filtered_search(
                     items=results
                 )
 
-
-    except pymssql.Error as e:
+    except DBError as e:
         logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de la base de dades")

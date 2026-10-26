@@ -57,7 +57,7 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
         
 
         # Verificar si la API Key es válida
-        if api_key not in API_KEYS:
+        if not api_key or api_key not in API_KEYS:
             
             # Registrar intento fallido
             logger.warning(f"Intento de acceso sin API Key válida: IP {client_ip}, URL {request.url}")
@@ -67,9 +67,12 @@ class APIKeyMiddleware(BaseHTTPMiddleware):
 
             # Si se superó el máximo de intentos, bloquear la IP
             if FAILED_ATTEMPTS[client_ip] >= MAX_FAILED_ATTEMPTS:
-                BLOCKED_IPS.append(client_ip)
-                with open(BLOCKED_IPS_FILE, 'a', encoding='utf-8') as archivo:
-                    archivo.write(client_ip + '\n')
+                BLOCKED_IPS.add(client_ip)
+                try:
+                    with open(BLOCKED_IPS_FILE, 'a', encoding='utf-8') as archivo:
+                        archivo.write(client_ip + '\n')
+                except OSError as e:
+                    logger.error(f"No s'ha pogut guardar la IP bloquejada a {BLOCKED_IPS_FILE}: {e}")
                 logger.warning(f"Acceso bloqueado desde IP: {client_ip}, URL {request.url}")
                 logger.warning(f"IP bloqueada automáticamente tras múltiples intentos: {client_ip}")
                 return JSONResponse(

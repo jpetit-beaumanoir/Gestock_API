@@ -39,7 +39,7 @@ router = APIRouter(
 async def get_product_values(
     request: Request,
     ean: str,
-    codemag: int
+    codemag: str
 ):
     try:
         result = await run_in_threadpool(
@@ -74,11 +74,15 @@ async def get_product_values(
     response_model=MessageResponse
 )
 async def upload_productos_route(
-    request: Request,
     csv_file: UploadFile = File(...),
     marca: str = Form(...)
 ):
-    return await productos_service.upload_productos(
-        csv_file=csv_file,
-        marca=marca
-    )
+    content = await csv_file.read()
+
+    try:
+        return await run_in_threadpool(productos_service.upload_productos, content, csv_file.filename, marca)
+    
+    except ValueError as e:
+        raise HTTPException(400,detail=str(e))
+    except ConnectionError:
+        raise HTTPException(503, detail="Error de connexió amb la base de dades")

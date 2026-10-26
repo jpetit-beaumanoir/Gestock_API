@@ -8,4 +8,4 @@ def validar_user(key: str) -> AuthUserResponse:
         )
 
     else:
-        return ValueError("CLAU INCORRECTA")
+        raise ValueError("CLAU INCORRECTA")

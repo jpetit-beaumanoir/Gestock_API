@@ -1,11 +1,14 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+# almacen = gestock_caixes.codi_centre (texto). descripcio y temporada: VARCHAR(20)
+
 
 class CajaExistsDB(BaseModel):
     caja: int
     palet: int
-    almacen: int
-    temporada: str
-    descripcion: str
+    almacen: str
+    temporada: str | None = None
+    descripcion: str | None = None
     cantidad: int
 
 class CajaInfo(BaseModel):
@@ -18,24 +21,24 @@ class CajasGetResponse(BaseModel):
 
 
 class CajaCreateRequest(BaseModel):
-    almacen: int
+    almacen: str
     palet: int
 
 class MessageResponse(BaseModel):
     message: str
 
 class CajaGetDescTempResponse(BaseModel):
-    descripcion: str
-    temporada: str
+    descripcion: str | None = None
+    temporada: str | None = None
 
 class CajaUpdateDescTempRequest(BaseModel):
-    almacen: int
+    almacen: str
     palet: int
     caja: int
-    descripcion: str|None
-    temporada: str|None
+    descripcion: str | None = Field(default=None, max_length=20)
+    temporada: str | None = Field(default=None, max_length=20)
 
 class CajaUpdateCantidadRequest(BaseModel):
-    almacen: int
+    almacen: str
     palet: int
     caja: int

@@ -10,7 +10,7 @@ class PaletsGetResponse(BaseModel):
 
 
 class PaletCreateRequest(BaseModel):
-    almacen: int
+    almacen: str      # gestock_palets.codi_centre
 
 class MessageResponse(BaseModel):
     message: str

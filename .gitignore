@@ -47,3 +47,4 @@ blocked_ips.txt
 *.db
 *.sqlite
 *.sqlite3
+*.sql

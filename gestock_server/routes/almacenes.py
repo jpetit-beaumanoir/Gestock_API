@@ -45,7 +45,7 @@ async def get_almacenes(request: Request):
 @router.get("/login",response_model=AlmacenLoginResponse)
 async def login_almacen(
     request: Request, 
-    codigo: int
+    codigo: str
 ):
 
     try:
@@ -116,7 +116,7 @@ async def crear_almacen(
 @router.delete("/delete", response_model=MessageResponse)
 async def delete_almacen(
     request: Request, 
-    codigo: int
+    codigo: str
 ):
     try:
     
@@ -127,6 +127,15 @@ async def delete_almacen(
         )
 
         return result
+
+    except LookupError:
+
+        logger.warning(f"{request.state.user} HA INTENTAT ELIMINAR UN MAGATZEM INNEXISTENT {codigo} ({request.client.host})")
+
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"No existeix un magatzem amb codi {codigo}"
+        )
     
     except ValueError:
 

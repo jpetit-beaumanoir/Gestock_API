@@ -24,7 +24,7 @@ router = APIRouter(
 @router.get("",response_model=CajasGetResponse)
 async def get_caixes(
     request:Request,
-    almacen: int,
+    almacen: str,
     palet: int
 ):   
 
@@ -68,6 +68,28 @@ async def create_caixa(
             message="Caixa creada correctament"
         )
 
+    except LookupError as e:
+
+        logger.warning(
+            f"{request.state.user} HA INTENTAT CREAR UNA CAIXA EN UN PALET INNEXISTENT {data.palet} MAGATZEM {data.almacen} ({request.client.host})"
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+
+    except ValueError as e:
+
+        logger.warning(
+            f"{request.state.user} CONFLICTE CREANT UNA CAIXA AL PALET {data.palet} MAGATZEM {data.almacen} ({request.client.host})"
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(e)
+        )
+
     except ConnectionError:
 
         logger.error(
@@ -82,7 +104,7 @@ async def create_caixa(
 @router.delete("/delete",response_model=MessageResponse)
 async def delete_caixa(
     request: Request,
-    almacen: int,
+    almacen: str,
     palet: int,
     caja: int
 ):
@@ -124,7 +146,7 @@ async def delete_caixa(
 @router.get("/get-desc-temp",response_model=CajaGetDescTempResponse)
 async def get_desc_temp_caja(
     request: Request,
-    almacen: int,
+    almacen: str,
     palet: int,
     caja: int
 ):
@@ -223,6 +245,15 @@ async def update_cantidad_caja(
         )
 
         return result
+
+    except ValueError:
+
+        logger.warning(f"{request.state.user} HA INTENTAT ACTUALITZAR LA QUANTITAT DE LA CAIXA {data.caja} DEL PALET {data.palet} DEL MAGATZEM {data.almacen} QUE NO EXISTEIX ({request.client.host})")
+
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"La caixa {data.caja} del palet {data.palet} del magatzem {data.almacen} no existeix"
+        )
 
     except ConnectionError:
 

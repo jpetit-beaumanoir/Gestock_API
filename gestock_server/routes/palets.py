@@ -21,7 +21,7 @@ router = APIRouter(
 @router.get("",response_model=PaletsGetResponse)
 async def get_palets(
     request:Request,
-    almacen = int
+    almacen: str
 ):   
 
     try:
@@ -55,11 +55,22 @@ async def create_palet(
         )
 
         logger.info(
-            f"{request.state.user} HA CREAT EL PALET {data.almacen} ({request.client.host})"
+            f"{request.state.user} {result.message} ({request.client.host})"
         )
 
         return MessageResponse(
             message="Palet creat correctament"
+        )
+
+    except LookupError as e:
+
+        logger.warning(
+            f"{request.state.user} HA INTENTAT CREAR UN PALET EN UN MAGATZEM INNEXISTENT {data.almacen} ({request.client.host})"
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
         )
 
     except ValueError as e:
@@ -70,7 +81,7 @@ async def create_palet(
 
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail= setattr(e)
+            detail=str(e)
         )
 
     except ConnectionError:
@@ -87,7 +98,7 @@ async def create_palet(
 @router.delete("/delete",response_model=MessageResponse)
 async def delete_palet(
     request: Request,
-    almacen: int,
+    almacen: str,
     palet: int
 ):
     

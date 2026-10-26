@@ -1,202 +1,159 @@
+"""
+Palets de Gestock: tabla `gestock_palets` (codi_centre, palet).
+"""
 from gestock_server.db.database import db_pool
+from gestock_server.db.driver import DBError, IntegrityError
 from gestock_server.schemas.palet import (
     PaletInfo,
     PaletsGetResponse,
     MessageResponse
 )
 
-from fastapi import status, HTTPException
-import pymssql
-
 import logging
 logger = logging.getLogger(__name__)
 
-def get_palets(almacen: int) -> PaletsGetResponse:
+TIPUS_ALMACEN = "ALMACEN"
+
+
+def get_palets(almacen: str) -> PaletsGetResponse:
     """
-    Obtiene la información de los palets en un almacén específico.
-
-    Este endpoint consulta la base de datos para obtener los palets de un almacén determinado 
-    y la cantidad de cajas y productos en cada palet. Si la consulta es exitosa, devuelve un 
-    objeto con la información de cada palet, incluyendo el número de cajas y la cantidad total de productos.
-    
-    Args:
-        almacen (int): El código del almacén para obtener los palets asociados.
-
-    Returns:
-        PaletResponse: Un diccionario con la información de los palets, incluyendo la cantidad de cajas 
-                       y productos en cada palet, así como el número total de palets.
+    Devuelve los palets de un almacén con su número de cajas y de unidades de stock.
 
     Raises:
-        HTTPException: Lanza 404 si no encuentra palets en el almacén especificado.
-        HTTPException: Lanza un error personalizado si ocurre un problema con la base de datos.
+        ConnectionError: si ocurre un error con la base de datos.
     """
     try:
-
-        # Obtiene una conexión al pool de base de datos
         with db_pool.get_connection() as conn:
             with conn.cursor() as cursor:
-                # Ejecuta la consulta para obtener los palets del almacén especificado
-                cursor.execute("SELECT palet FROM palets WHERE almacen = %s", (almacen,))
+                # Una sola consulta: palets + cajas + unidades (quantitat la mantienen los triggers)
+                cursor.execute(
+                    """
+                    SELECT
+                        p.palet,
+                        COUNT(c.caixa)                 AS cajas,
+                        COALESCE(SUM(c.quantitat), 0)  AS cantidad
+                    FROM gestock_palets p
+                    LEFT JOIN gestock_caixes c
+                        ON c.codi_centre = p.codi_centre
+                       AND c.palet = p.palet
+                    WHERE p.codi_centre = %s
+                    GROUP BY p.palet
+                    ORDER BY p.palet
+                    """,
+                    (almacen,)
+                )
                 palets = cursor.fetchall()
 
-                if not palets:
-                    return PaletsGetResponse(
-                        palets={},
-                        total=0
-                    )
+        data = {
+            str(palet): PaletInfo(cajas=int(cajas), cantidad=int(cantidad))
+            for palet, cajas, cantidad in palets
+        }
 
-                data = {}
-                
-                # Para cada palet obtenido, obtenemos la cantidad de cajas y productos
-                for palet_row in palets:
-                    palet_id = palet_row[0]  # Extrae el ID del palet
+        return PaletsGetResponse(
+            palets=data,
+            total=len(palets)
+        )
 
-                    # Ejecuta una consulta para obtener la cantidad de cajas y la cantidad total de productos del palet
-                    cursor.execute(
-                        """SELECT 
-                                COUNT(DISTINCT c.caja), 
-                                COUNT(s.ean) 
-                            FROM cajas c
-                            LEFT JOIN stock s 
-                                ON c.caja = s.caja 
-                                AND c.palet = s.palet 
-                                AND c.almacen = s.almacen 
-                            WHERE c.almacen = %s 
-                                AND c.palet = %s""",
-                        (almacen, palet_id)
-                    )
-                    cajas, cantidad = cursor.fetchone()
-                    
-                    # Almacena la información del palet en el diccionario de respuesta
-                    data[str(palet_id)] = PaletInfo(
-                        cajas=cajas,
-                        cantidad=cantidad or 0
-                    )
-
-            return PaletsGetResponse(
-                palets=data,
-                total=len(palets)
-            )
-
-    except pymssql.Error as e:
-        # Si ocurre un error en la base de datos, se maneja de manera consistente
+    except DBError as e:
         logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de la base de dades")
-  
-def create_palet(almacen: int) -> MessageResponse:
+
+
+def create_palet(almacen: str) -> MessageResponse:
     """
-    Crea un nuevo palet en un almacén específico.
-
-    Este endpoint crea un palet nuevo en un almacén dado. Si no hay palets existentes, el primer palet 
-    se creará con el ID 1. Si ya existen palets, se seleccionará el menor ID faltante. Si el ID propuesto 
-    ya existe, se generará un error de conflicto.
-
-    Args:
-        almacen (int): El código del almacén en el que se desea crear el palet.
-
-    Returns:
-        MessageResponse: Un mensaje que confirma la creación del palet con su ID y almacén.
+    Crea un palet nuevo en un almacén con el menor número libre (1, 2, 3...).
 
     Raises:
-        HTTPException: Lanza un error si ya existe un palet con el ID seleccionado o si ocurre un error 
-                        con la base de datos durante la creación del palet.
+        LookupError: si el almacén no existe (404).
+        ValueError: si hay un conflicto de clave, p. ej. dos usuarios a la vez (409).
+        ConnectionError: si ocurre un error con la base de datos (500).
     """
-    try:
+    next_id = None
 
-        # Obtiene una conexión al pool de base de datos
+    try:
         with db_pool.get_connection() as conn:
             with conn.cursor() as cursor:
-                # Ejecuta una consulta para encontrar el menor ID faltante para el palet
-                cursor.execute(""" 
-                    SELECT MIN(palet)
+                # Comprueba que el almacén existe antes de crear el palet
+                cursor.execute(
+                    "SELECT COUNT(*) FROM centres WHERE codi_centre = %s AND tipus = %s",
+                    (almacen, TIPUS_ALMACEN)
+                )
+                if cursor.fetchone()[0] == 0:
+                    raise LookupError(f"No existeix el magatzem {almacen}")
+
+                # Menor número de palet libre en el almacén
+                cursor.execute(
+                    """
+                    SELECT MIN(posibles.palet)
                     FROM (
-                        SELECT palet + 1 AS palet 
-                        FROM palets 
-                        WHERE almacen = %s      
-                        UNION      
+                        SELECT palet + 1 AS palet
+                        FROM gestock_palets
+                        WHERE codi_centre = %s
+                        UNION
                         SELECT 1 AS palet
-                    ) AS posibles_id 
-                    WHERE palet NOT IN (
-                        SELECT palet 
-                        FROM palets 
-                        WHERE almacen = %s
+                    ) AS posibles
+                    WHERE posibles.palet NOT IN (
+                        SELECT palet
+                        FROM gestock_palets
+                        WHERE codi_centre = %s
                     )
-                """, (almacen,almacen,))
+                    """,
+                    (almacen, almacen)
+                )
                 result = cursor.fetchone()
-                next_id = result[0] if result else None
+                next_id = int(result[0]) if result and result[0] is not None else 1
 
-                # Si no hay palets en la tabla, comenzamos desde el ID 1
-                if next_id is None:
-                    next_id = 1
-
-                # Verificar si el palet con el siguiente ID ya existe en el almacén
-                cursor.execute("SELECT COUNT(*) FROM palets WHERE palet = %s AND almacen = %s", (next_id, almacen))
-                if cursor.fetchone()[0] > 0:
-                    # Si ya existe, se lanza un error de conflicto
-                    raise HTTPException(
-                        status_code=status.HTTP_409_CONFLICT,
-                        detail=f"Ya existe un palet con el código {next_id} en el almacén {almacen}"
-                    )
-
-                # Inserta el nuevo palet en la base de datos
-                cursor.execute("INSERT INTO palets (palet, almacen) VALUES (%s, %s)", (next_id, almacen))
+                cursor.execute(
+                    "INSERT INTO gestock_palets (codi_centre, palet) VALUES (%s, %s)",
+                    (almacen, next_id)
+                )
                 conn.commit()
 
-            
                 return MessageResponse(
                     message=f"HA CREAT EL PALET {next_id} EN EL MAGATZEM {almacen}"
                 )
-                
-    except pymssql.IntegrityError:
-        # Maneja errores de integridad como cuando ya existe un almacén con el mismo código
-        raise ValueError(f"Ja existeix un palet amb codi {next_id}")
-        
-    except pymssql.Error as e:
-        # Si ocurre un error en la base de datos, se maneja de manera consistente
+
+    except IntegrityError as e:
+        logger.warning(f"ERROR D'INTEGRITAT CREANT PALET {next_id} AL MAGATZEM {almacen}: {e}")
+        raise ValueError(f"No s'ha pogut crear el palet {next_id} al magatzem {almacen}. Torna-ho a provar")
+
+    except DBError as e:
         logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de base de dades")
 
-def delete_palet(almacen: int, palet: int) -> MessageResponse:
+
+def delete_palet(almacen: str, palet: int) -> MessageResponse:
     """
-    Elimina un palet específico de un almacén.
-    
-    Este endpoint verifica si el palet tiene cajas asociadas antes de permitir su eliminación. Si el palet 
-    tiene cajas, se lanzará un error. Si el palet no existe o no se encuentra en el almacén, se genera un 
-    error 404.
-
-    Args:
-        almacen (int): El código del almacén donde se encuentra el palet.
-        palet (int): El ID del palet que se desea eliminar.
-
-    Returns:
-        MessageResponse: Un mensaje confirmando la eliminación del palet.
+    Elimina un palet vacío (sin cajas).
 
     Raises:
-        HTTPException: Lanza un error 409 si el palet tiene cajas asociadas, 
-                        un error 404 si el palet no se encuentra, 
-                        o un error 500 si hay un problema con la base de datos.
+        ValueError: si el palet todavía tiene cajas (409).
+        ConnectionError: si ocurre un error con la base de datos.
     """
     try:
-
-        # Obtiene una conexión al pool de base de datos
         with db_pool.get_connection() as conn:
             with conn.cursor() as cursor:
-                # Verifica si el palet tiene cajas asociadas en el almacén
-                cursor.execute("SELECT COUNT(*) FROM cajas WHERE palet = %s AND almacen = %s", (palet, almacen))
+                cursor.execute(
+                    "SELECT COUNT(*) FROM gestock_caixes WHERE codi_centre = %s AND palet = %s",
+                    (almacen, palet)
+                )
                 cajas_count = cursor.fetchone()[0]
-                
-                # Si el palet tiene cajas, no se puede eliminar
+
                 if cajas_count > 0:
-                    raise ValueError(f"No se puede eliminar el palet {palet} porque tiene {cajas_count} cajas asociadas.")
-                
-                # Si no tiene cajas asociadas, proceder a eliminar el palet
-                cursor.execute("DELETE FROM palets WHERE palet = %s AND almacen = %s", (palet, almacen))
+                    raise ValueError(f"No es pot eliminar el palet {palet} perquè té {cajas_count} caixes.")
+
+                cursor.execute(
+                    "DELETE FROM gestock_palets WHERE codi_centre = %s AND palet = %s",
+                    (almacen, palet)
+                )
                 conn.commit()
 
-                # Si la eliminación fue exitosa, devolver un mensaje de éxito
                 return MessageResponse(message=f"Palet {palet} eliminado")
 
-    except pymssql.Error as e:
-        # Si ocurre un error en la base de datos, se maneja de manera consistente
+    except IntegrityError:
+        # La BDD impide borrar un palet con cajas (FK sin cascada)
+        raise ValueError(f"No es pot eliminar el palet {palet} perquè té caixes.")
+
+    except DBError as e:
         logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de la base de dades")

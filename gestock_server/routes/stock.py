@@ -24,7 +24,7 @@ router = APIRouter(
 @router.get("",response_model=StockGetResponse)
 async def get_stock_caja(
     request: Request,
-    almacen: int,
+    almacen: str,
     palet: int,
     caja: int
 ):
@@ -56,7 +56,8 @@ async def add_stock(
 ):
     try:
         result = stock_service.add_stock(
-            body=data
+            body=data,
+            usuario=request.state.user
         )
 
         logger.info(
@@ -65,9 +66,27 @@ async def add_stock(
 
         return result
 
+    except LookupError as e:
+        logger.warning(
+            f"{request.state.user} HA INTENTAT AFEGIR STOCK A UNA CAIXA INNEXISTENT {data.caja} PALET {data.palet} MAGATZEM {data.almacen} ({request.client.host})"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+
+    except PermissionError as e:
+        logger.warning(
+            f"{request.state.user} NO TÉ USUARI A LA TAULA USUARIS: {e} ({request.client.host})"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=str(e)
+        )
+
     except ValueError as e:
         logger.warning(
-            f"{request.state.user} HA INTENTAT AFEGIR STOCK SENSE EANS ({request.client.host})"
+            f"{request.state.user} NO HA POGUT AFEGIR STOCK: {e} ({request.client.host})"
         )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, 
@@ -130,14 +149,23 @@ async def move_stock(
         )
 
         logger.info(
-            f"{request.state.user} HA MOGUT {len(data.ids)} PRODUCTES DE LA CAIXA {data} DEL PALET {data} EN EL MAGATZEM {data.almacen} ({request.client.host})"
+            f"{request.state.user} HA MOGUT {len(data.ids)} PRODUCTES A LA CAIXA {data.caja} DEL PALET {data.palet} EN EL MAGATZEM {data.almacen} ({request.client.host})"
         )
 
         return result
 
+    except LookupError as e:
+        logger.warning(
+            f"{request.state.user} HA INTENTAT MOURE STOCK A UNA CAIXA INNEXISTENT {data.caja} PALET {data.palet} MAGATZEM {data.almacen} ({request.client.host})"
+        )
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+
     except ValueError as e:
         logger.warning(
-            f"{request.state.user} HA INTENTAT MOURE STOCK SENSE EANs ({request.client.host})"
+            f"{request.state.user} NO HA POGUT MOURE STOCK: {e} ({request.client.host})"
         )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, 
@@ -157,7 +185,7 @@ async def move_stock(
 @router.get("/export",response_model=StockExportResponse)
 async def export_stock(
     request: Request,
-    almacen: int,
+    almacen: str,
     ean: str | None = None,
     talla: str | None = None,
     nombre: str | None = None,

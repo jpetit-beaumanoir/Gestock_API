@@ -1,21 +1,24 @@
 from pydantic import BaseModel, conlist
 
+# almacen = codi_centre (texto)
+
+
 class StockAddRequest(BaseModel):
-    almacen: int
+    almacen: str
     palet: int
     caja: int
     eans: conlist(str)
 
 class StockDeleteRequest(BaseModel):
-    almacen: int
+    almacen: str
     palet: int
     caja: int
     ids: conlist(int)
 
 class StockMoveRequest(BaseModel):
-    almacen: int
-    palet: int
-    caja: int
+    almacen: str      # destino
+    palet: int        # destino
+    caja: int         # destino
     ids: conlist(int)
 
 class StockInfo(BaseModel):
@@ -38,7 +41,7 @@ class StockExportItem(BaseModel):
     desc_caja: str
     temp_caja: str
 
-    almacen: int
+    almacen: str
 
     talla: str
     nombre: str
@@ -50,7 +53,7 @@ class StockExportItem(BaseModel):
     temporada: str
 
     pvp: float
-    prmp: float
+    prmp: float       # ya no existe en productes: siempre 0.0 (se mantiene por compatibilidad con la app)
 
     marca: str
 

@@ -2,11 +2,12 @@ import logging
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
-#LOG_DIR = Path("/home/aiq/data/gestock/logs")
-LOG_DIR = Path("/logs")
-LOG_DIR.mkdir(parents=True, exist_ok=True)
+from gestock_server.config import LOG_PATH
 
-LOG_FILE = LOG_DIR / "gestock.log"
+# Ruta del log definida en gestock.env (LOG_PATH). Puede ser relativa o absoluta,
+# p. ej. LOG_PATH = '/home/aiq/data/gestock/logs/gestock.log'
+LOG_FILE = Path(LOG_PATH)
+LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 
 
 def setup_logging():

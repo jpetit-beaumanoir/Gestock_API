@@ -1,70 +1,79 @@
+"""
+Almacenes de Gestock.
+
+Desde la BDD ElBicho los almacenes son filas de la tabla `centres` con tipus = 'ALMACEN'.
+El código del almacén es `centres.codi_centre` (VARCHAR(10)) y el nombre `centres.nom_centre`.
+"""
 from gestock_server.db.database import db_pool
+from gestock_server.db.driver import DBError, IntegrityError, dict_cursor
+from gestock_server.config import DEFAULT_PAIS
 from gestock_server.schemas.almacen import (
-    AlmacenInfo, 
+    AlmacenInfo,
     AlmacenResponse,
     AlmacenLoginResponse,
     MessageResponse
 )
-import pymssql
 
 import logging
 logger = logging.getLogger(__name__)
 
+TIPUS_ALMACEN = "ALMACEN"
+
+
 def get_almacenes() -> AlmacenResponse:
-    """Ruta para obtener una lista de almacenes con información sobre palets, cajas y productos.
-
-    Esta función consulta la base de datos para obtener un resumen de todos los almacenes, incluyendo:
-    - Nombre del almacén
-    - Código del almacén
-    - Cantidad total de palets
-    - Cantidad total de cajas
-    - Total de productos (suma de la cantidad de productos en todas las cajas)
-
-    Returns:
-        JSONResponse: Un JSON con los datos de los almacenes, incluyendo el nombre, código, y los totales de palets, cajas y productos.
-    
-    Raises:
-        HTTPException: Lanza un error 500 si ocurre un problema con la consulta a la base de datos.
     """
-    try:        
+    Devuelve todos los almacenes (centres con tipus 'ALMACEN') con el número de palets,
+    cajas y unidades de stock de cada uno.
+
+    Raises:
+        ConnectionError: si ocurre un error con la base de datos.
+    """
+    try:
         with db_pool.get_connection() as conn:
-            with conn.cursor(as_dict=True) as cursor:
+            with dict_cursor(conn) as cursor:
 
-                # Consulta 1: cantidad de palets por almacen
+                # Palets por almacén
                 cursor.execute("""
-                    SELECT almacen, COUNT(DISTINCT palet) AS cantidad_palets
-                    FROM palets
-                    GROUP BY almacen
+                    SELECT codi_centre, COUNT(*) AS cantidad_palets
+                    FROM gestock_palets
+                    GROUP BY codi_centre
                 """)
-                palets_data = {row["almacen"]: row["cantidad_palets"] for row in cursor.fetchall()}
+                palets_data = {row["codi_centre"]: row["cantidad_palets"] for row in cursor.fetchall()}
 
-                # Consulta 2: cantidad de cajas por almacen
+                # Cajas por almacén
                 cursor.execute("""
-                    SELECT almacen, COUNT(caja) AS cantidad_cajas
-                    FROM cajas
-                    GROUP BY almacen
+                    SELECT codi_centre, COUNT(*) AS cantidad_cajas
+                    FROM gestock_caixes
+                    GROUP BY codi_centre
                 """)
-                cajas_data = {row["almacen"]: row["cantidad_cajas"] for row in cursor.fetchall()}
+                cajas_data = {row["codi_centre"]: row["cantidad_cajas"] for row in cursor.fetchall()}
 
-                # Consulta 3: cantidad total de productos (distinct ean) por almacen desde stock
+                # Unidades de stock por almacén
                 cursor.execute("""
-                    SELECT almacen, COUNT(ean) AS cantidad_productos
-                    FROM stock
-                    GROUP BY almacen
+                    SELECT codi_centre, COUNT(*) AS cantidad_productos
+                    FROM gestock_stock
+                    GROUP BY codi_centre
                 """)
-                productos_data = {row["almacen"]: row["cantidad_productos"] for row in cursor.fetchall()}
+                productos_data = {row["codi_centre"]: row["cantidad_productos"] for row in cursor.fetchall()}
 
-                # Consulta 4: almacenes con nombre y codigo
-                cursor.execute("SELECT codigo, nombre FROM almacenes")
+                # Almacenes
+                cursor.execute(
+                    """
+                    SELECT codi_centre, nom_centre
+                    FROM centres
+                    WHERE tipus = %s
+                    ORDER BY codi_centre
+                    """,
+                    (TIPUS_ALMACEN,)
+                )
                 almacenes_info = cursor.fetchall()
 
-                # Combina todo en el diccionario final
                 data = {}
                 for almacen in almacenes_info:
-                    codigo = almacen["codigo"]
-                    
+                    codigo = almacen["codi_centre"]
+
                     data[str(codigo)] = AlmacenInfo(
-                        nombre=almacen["nombre"],
+                        nombre=almacen["nom_centre"] or str(codigo),
                         palets=palets_data.get(codigo, 0),
                         cajas=cajas_data.get(codigo, 0),
                         productos=productos_data.get(codigo, 0)
@@ -72,125 +81,106 @@ def get_almacenes() -> AlmacenResponse:
 
         return AlmacenResponse(almacenes=data)
 
-    except pymssql.Error as e:
+    except DBError as e:
         logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de base de dades")
 
-def login_almacen(code: int) -> AlmacenLoginResponse:
-    """Ruta para autenticar el acceso a un almacén utilizando su código.
 
-    Esta función maneja la autenticación del almacén utilizando un código único.
-    Se consulta la base de datos para verificar si existe un almacén con el código proporcionado.
-    Si el almacén existe, se devuelve su nombre. Si no, se devuelve un error 204 indicando que no se encuentra.
-
-    Args:
-        code (int): El código único del almacén que se desea autenticar.
-
-    Returns:
-        dict: Un diccionario con el nombre del almacén si la autenticación es exitosa.
+def login_almacen(code: str) -> AlmacenLoginResponse:
+    """
+    Comprueba que existe un almacén con el código indicado y devuelve su nombre.
 
     Raises:
-        HTTPException: Lanza una excepción HTTP 204 si no existe un almacén con el código proporcionado.
-        HTTPException: Lanza una excepción HTTP 500 si ocurre un error en la base de datos.
+        ValueError: si no existe un almacén (centre tipus 'ALMACEN') con ese código (404).
+        ConnectionError: si ocurre un error con la base de datos.
     """
     try:
-
-        # Obtiene una conexión al pool de base de datos y asegura que la conexión se maneje automáticamente
         with db_pool.get_connection() as conn:
-            # Obtiene un cursor para ejecutar las consultas SQL
             with conn.cursor() as cursor:
-                # Realiza una consulta SQL para buscar el almacén por su código
-                cursor.execute("SELECT nombre FROM almacenes WHERE codigo = %s", (code,))
-                # Recupera una fila del resultado de la consulta
+                cursor.execute(
+                    "SELECT codi_centre, nom_centre FROM centres WHERE codi_centre = %s AND tipus = %s",
+                    (code, TIPUS_ALMACEN)
+                )
                 row = cursor.fetchone()
-                
-                # Si se encuentra el almacén, se devuelve el nombre
+
                 if row:
-                    return AlmacenLoginResponse(nombre= row[0])
-                
-                # Si no se encuentra el almacén, se rechaza la solicitud con un error 404
+                    return AlmacenLoginResponse(nombre=row[1] or str(row[0]))
+
                 raise ValueError(f"El magatzem {code} no existeix")
-            
-    except pymssql.Error as e:
-        # Si ocurre un error al interactuar con la base de datos, se maneja de manera consistente
-        logger.critical(f"ERROR SQL: {e}")
-        raise ConnectionError("Error de base de dades")
 
-def create_almacen(nombre: str, codigo: int) -> MessageResponse:
-    """Ruta para crear un nuevo almacén en la base de datos.
-
-    Esta función inserta un nuevo almacén con el nombre y código proporcionados en la base de datos.
-    Si el almacén se crea correctamente, se devuelve un mensaje de éxito. Si ya existe un almacén con
-    el mismo código, se lanza un error 409. En caso de cualquier otro error, se lanza un error 500.
-
-    Args:
-        name (str): El nombre del almacén a crear.
-        code (int): El código único del almacén.
-
-    Returns:
-        dict: Un mensaje confirmando la creación exitosa del almacén.
-
-    Raises:
-        HTTPException: Lanza un error 400 si la creación falla, 409 si el código ya existe y 500 si ocurre un error en la base de datos.
-    """
-    
-    try:
-
-        # Obtiene una conexión al pool de base de datos
-        with db_pool.get_connection() as conn:
-            with conn.cursor() as cursor:
-                # Ejecuta la consulta para insertar el nuevo almacén
-                cursor.execute("INSERT INTO almacenes (nombre, codigo) VALUES (%s, %s)", (nombre, codigo))
-                conn.commit()
-            
-                return MessageResponse(message = f"Magatzem '{nombre}' creat.")
-                
-    
-    except pymssql.IntegrityError:
-        # Maneja errores de integridad como cuando ya existe un almacén con el mismo código
-        raise ValueError(f"Ja existeix un magatzem amb codi {codigo}")
-    
-    except pymssql.Error as e:
-        # Si ocurre un error en la base de datos, se maneja de manera consistente
+    except DBError as e:
         logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de base de dades")
 
 
-def delete_almacen(codigo: int) -> MessageResponse:
+def create_almacen(nombre: str, codigo: str) -> MessageResponse:
     """
-    Elimina un almacén de la base de datos por su código.
-    
-    Este endpoint permite eliminar un almacén basado en su código único. Si el almacén no existe, 
-    devuelve un error 204. Si el almacén tiene elementos asignados (como palets o cajas), se lanza un 
-    error 409, indicando que debe vaciarse antes de eliminarlo.
-
-    Args:
-        code (int): El código único del almacén a eliminar.
-
-    Returns:
-        dict: Un mensaje confirmando la eliminación exitosa del almacén o un mensaje de error si ocurre algún problema.
+    Da de alta un almacén nuevo en `centres` (tipus 'ALMACEN', país DEFAULT_PAIS,
+    fecha de apertura = hoy). marca y regió quedan vacías.
 
     Raises:
-        HTTPException: Lanza un error 204 si no se encuentra el almacén con el código proporcionado. 
-                        Lanza un error 409 si el almacén tiene elementos asignados y no se puede eliminar.
+        ValueError: si ya existe un centro con ese código (409).
+        ConnectionError: si ocurre un error con la base de datos.
     """
     try:
-        # Obtiene una conexión al pool de base de datos
         with db_pool.get_connection() as conn:
             with conn.cursor() as cursor:
-                # Ejecuta la consulta para eliminar el almacén con el código proporcionado
-                cursor.execute("DELETE FROM almacenes WHERE codigo = %s", (codigo,))
+                cursor.execute(
+                    """
+                    INSERT INTO centres (codi_centre, nom_centre, pais, tipus, data_obertura)
+                    VALUES (%s, %s, %s, %s, CURDATE())
+                    """,
+                    (codigo, nombre, DEFAULT_PAIS, TIPUS_ALMACEN)
+                )
                 conn.commit()
-                    
-                return MessageResponse(message=f"Magatzem '{codigo}' eliminat.")
-                
-    except pymssql.IntegrityError:
-        # Si el almacén tiene elementos asignados, lanza un error 409 indicando que se debe vaciar antes de eliminarlo
-        raise ValueError("S'ha intentat eliminar un magatzem amb elements a dintre")
 
-    except pymssql.Error as e:
-        # Si ocurre un error en la base de datos, se maneja de manera consistente
+                return MessageResponse(message=f"Magatzem '{nombre}' creat.")
+
+    except IntegrityError:
+        # Clave primaria duplicada: ya existe un centro (almacén, tienda o corner) con ese código
+        raise ValueError(f"Ja existeix un centre amb codi {codigo}")
+
+    except DBError as e:
+        logger.critical(f"ERROR SQL: {e}")
+        raise ConnectionError("Error de base de dades")
+
+
+def delete_almacen(code: str) -> MessageResponse:
+    """
+    Elimina un almacén de `centres`. Solo se permite con centros de tipus 'ALMACEN'
+    y sin palets (las tiendas y corners no se pueden borrar desde Gestock).
+
+    Raises:
+        LookupError: si no existe un almacén con ese código (404).
+        ValueError: si el almacén todavía tiene palets (409).
+        ConnectionError: si ocurre un error con la base de datos.
+    """
+    try:
+        with db_pool.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT COUNT(*) FROM centres WHERE codi_centre = %s AND tipus = %s",
+                    (code, TIPUS_ALMACEN)
+                )
+                if cursor.fetchone()[0] == 0:
+                    raise LookupError(f"El magatzem {code} no existeix")
+
+                cursor.execute("SELECT COUNT(*) FROM gestock_palets WHERE codi_centre = %s", (code,))
+                if cursor.fetchone()[0] > 0:
+                    raise ValueError(f"El magatzem {code} té palets a dintre")
+
+                cursor.execute(
+                    "DELETE FROM centres WHERE codi_centre = %s AND tipus = %s",
+                    (code, TIPUS_ALMACEN)
+                )
+                conn.commit()
+
+                return MessageResponse(message=f"Magatzem '{code}' eliminat.")
+
+    except IntegrityError:
+        # Otra tabla de la BDD ElBicho sigue haciendo referencia a este centro
+        raise ValueError("S'ha intentat eliminar un magatzem amb elements associats")
+
+    except DBError as e:
         logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de la base de dades")
-
-    
