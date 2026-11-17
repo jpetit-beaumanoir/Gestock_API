@@ -57,7 +57,7 @@ async def add_stock(
     try:
         result = stock_service.add_stock(
             body=data,
-            usuario=request.state.user
+            id_usuari=request.state.id_usuari
         )
 
         logger.info(

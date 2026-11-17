@@ -22,13 +22,19 @@ async def validar_user(
 ):
     try:
         result = auth_service.validar_user(key=key)
-        logger.info(f"USUARI {request.state.user} REGISTRAT DESDE {request.client.host}")
+        logger.info(f"USUARI {result.user} REGISTRAT DESDE {request.client.host}")
 
         return result
 
     except ValueError:
-    
-        logger.warning(f"INTENT DE REGISTRAR USUARI DESDE {request.client.host}")
+
+        logger.warning(f"INTENT DE REGISTRAR USUARI AMB CLAU INCORRECTA DESDE {request.client.host}")
 
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="CLAU INCORRECTA")
+
+    except ConnectionError:
+
+        logger.error(f"ERROR DE BD VALIDANT USUARI DESDE {request.client.host}")
+
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Servei no disponible. Torna-ho a provar més tard")
     

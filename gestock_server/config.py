@@ -45,37 +45,26 @@ MAX_FAILED_ATTEMPTS = int(
 )
 BLOCKED_IPS_FILE = getenv("BLOCKED_IPS_FILE", "blocked_ips.txt")
 
-_RAW_API_KEYS = {
-    getenv("APIKEY_ANONIM"): {
-        "nom": "anonim",
-        "rol": "limitat"
-    },
-    getenv("APIKEY_CARLES"): {
-        "nom": "Carles",
-        "rol": "usuari"
-    },
-    getenv("APIKEY_SYLVAIN"): {
-        "nom": "Sylvain",
-        "rol": "usuari"
-    },
-    getenv("APIKEY_IT"): {
-        "nom": "IT",
-        "rol": "usuari"
-    }
-}
+# ---------------------------------------------------------------------------
+# Autenticación: las API keys se validan contra la tabla usuaris de la BDD
+# (usuaris.clau = SHA-256 de la clave, aplicacio = USUARIS_APLICACIO, actiu = 1).
+# ---------------------------------------------------------------------------
+# Segundos que se recuerda el resultado de validar una clave (evita una consulta por petición).
+# Al desactivar un usuario (actiu = 0) o cambiar su rol, el cambio tarda como máximo esto.
+AUTH_CACHE_SEGUNDOS = int(_env("AUTH_CACHE_SEGUNDOS", "60"))
 
-# Descarta claves vacías o no definidas: si falta una APIKEY_* en el .env,
-# None no debe convertirse en una clave válida (permitiría entrar sin cabecera)
-API_KEYS = {
-    key.strip(): value
-    for key, value in _RAW_API_KEYS.items()
-    if key and key.strip()
-}
+# Longitud máxima aceptada para una API key: las más largas se rechazan sin consultar la BDD
+API_KEY_MAX_LEN = int(_env("API_KEY_MAX_LEN", "256"))
 
 APIKEY_EXTERNAL = getenv("APIKEY_EXTERNAL")
 
-# Valor de usuaris.aplicacio para los usuarios de Gestock. El id_usuari de cada alta de stock
-# se busca en usuaris con (aplicacio = USUARIS_APLICACIO, nom_usuari = nombre de la API key)
+# Timeouts (segundos) de la API externa de partners. Las 3 marcas se consultan en paralelo,
+# así que una búsqueda tarda como máximo CONNECT + READ. Debe ser menor que el timeout de la app
+# (Retrofit: 10 s por defecto), para que la app reciba un error claro en vez de "ha tardado demasiado".
+EXTERNAL_API_CONNECT_TIMEOUT = float(_env("EXTERNAL_API_CONNECT_TIMEOUT", "3"))
+EXTERNAL_API_READ_TIMEOUT = float(_env("EXTERNAL_API_READ_TIMEOUT", "6"))
+
+# Valor de usuaris.aplicacio de los usuarios de Gestock (la tabla usuaris es compartida entre aplicaciones)
 USUARIS_APLICACIO = getenv("USUARIS_APLICACIO", "gestock")
 
 # País (ISO de 2 letras) con el que se crean los almacenes nuevos en centres

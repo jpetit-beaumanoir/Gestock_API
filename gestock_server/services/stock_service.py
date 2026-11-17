@@ -6,7 +6,6 @@ Columnas: id, ean, codi_centre, palet, caixa, data_alta (la pone la BDD) e id_us
 """
 from gestock_server.db.database import db_pool
 from gestock_server.db.driver import DBError, IntegrityError
-from gestock_server.config import USUARIS_APLICACIO
 from gestock_server.schemas.stock import (
     StockAddRequest,
     StockDeleteRequest,
@@ -24,34 +23,6 @@ logger = logging.getLogger(__name__)
 def _placeholders(n: int) -> str:
     """'%s, %s, ...' para usar en IN (...)."""
     return ", ".join(["%s"] * n)
-
-
-def _get_id_usuari(cursor, nom_usuari: str) -> int:
-    """
-    Busca el id_usuari del usuario de la API (nombre asociado a la API key) en la tabla usuaris.
-
-    Raises:
-        PermissionError: si el usuario no existe en usuaris o está desactivado (403).
-    """
-    cursor.execute(
-        """
-        SELECT id_usuari
-        FROM usuaris
-        WHERE aplicacio = %s
-          AND nom_usuari = %s
-          AND actiu = 1
-        """,
-        (USUARIS_APLICACIO, nom_usuari)
-    )
-    row = cursor.fetchone()
-
-    if row is None:
-        raise PermissionError(
-            f"L'usuari '{nom_usuari}' no existeix o no està actiu a la taula usuaris "
-            f"(aplicacio = '{USUARIS_APLICACIO}')"
-        )
-
-    return int(row[0])
 
 
 def _check_caixa(cursor, almacen: str, palet: int, caja: int) -> None:
@@ -120,18 +91,17 @@ def get_stock_caja(almacen: str, palet: int, caja: int) -> StockGetResponse:
         raise ConnectionError("Error de la base de dades")
 
 
-def add_stock(body: StockAddRequest, usuario: str) -> MessageResponse:
+def add_stock(body: StockAddRequest, id_usuari: int) -> MessageResponse:
     """
     Añade unidades de producto a una caja. Cada EAN de la lista es una unidad.
 
     Args:
         body: almacén, palet, caja y lista de EAN.
-        usuario: nombre del usuario de la API (request.state.user), se guarda su id_usuari.
+        id_usuari: usuario autenticado (request.state.id_usuari, viene de la tabla usuaris).
 
     Raises:
         ValueError: lista vacía o EAN que no existen en productes (400).
         LookupError: la caja no existe (404).
-        PermissionError: el usuario no existe en usuaris (403).
         ConnectionError: si ocurre un error con la base de datos.
     """
     eans = [str(ean).strip() for ean in body.eans if str(ean).strip()]
@@ -144,7 +114,6 @@ def add_stock(body: StockAddRequest, usuario: str) -> MessageResponse:
             with conn.cursor() as cursor:
 
                 _check_caixa(cursor, body.almacen, body.palet, body.caja)
-                id_usuari = _get_id_usuari(cursor, usuario)
 
                 # gestock_stock.ean tiene FK a productes: comprobar antes para dar un error claro
                 unique_eans = sorted(set(eans))

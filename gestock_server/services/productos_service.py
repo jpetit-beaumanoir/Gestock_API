@@ -7,9 +7,16 @@ La BDD ya no tiene prmp: la API lo devuelve siempre como 0.0 por compatibilidad 
 La BDD trabaja en modo estricto: los textos se recortan a la longitud de cada columna.
 """
 from gestock_server.db.database import db_pool
-from gestock_server.db.driver import DBError
+from gestock_server.db.driver import DBError, IntegrityError
 from gestock_server.schemas.producto import ProductosGetResponse, MessageResponse
-from gestock_server.config import APIKEY_EXTERNAL
+from gestock_server.config import (
+    APIKEY_EXTERNAL,
+    EXTERNAL_API_CONNECT_TIMEOUT,
+    EXTERNAL_API_READ_TIMEOUT,
+)
+
+import time
+from concurrent.futures import ThreadPoolExecutor
 
 import requests
 import pandas as pd
@@ -81,16 +88,50 @@ def _placeholders(n: int) -> str:
     return ", ".join(["%s"] * n)
 
 
+def _row_to_response(ean: str, row) -> ProductosGetResponse:
+    nombre, familia, subfamilia, color, talla, pvp, temporada, marca = row
+
+    color = color or "??"
+
+    # Limitar la longitud del color a 9 caracteres y agregar un punto final si es largo
+    if len(color) > 9:
+        color = color[0:9] + "."
+
+    return ProductosGetResponse(
+        ean=ean,
+        nombre=nombre or "??",
+        familia=familia or "??",
+        subfamilia=subfamilia or "??",
+        color=color,
+        talla=talla or "??",
+        pvp=float(pvp or 0),
+        prmp=0.0,
+        temporada=temporada or "??",
+        marca=marca or "??"
+    )
+
+
+def _producto_no_encontrado() -> ProductosGetResponse:
+    return ProductosGetResponse(
+        ean="??", nombre="??", familia="??", subfamilia="??", color="??",
+        talla="??", pvp=0.00, prmp=0.00, temporada="??", marca="??"
+    )
+
+
 def get_products_values(ean: str, codemag: str) -> ProductosGetResponse:
     """
     Devuelve los datos de un producto. Si no está en productes, lo busca en la API externa
     (marcas CCH, MGN, CRL) y, si lo encuentra, lo guarda en productes.
 
+    La conexión a la BDD NO se mantiene abierta mientras se espera a la API externa
+    (si no, unas cuantas búsquedas lentas dejaban el pool sin conexiones para el resto de la app).
+
     Raises:
-        ConnectionError: error de base de datos o de la API externa.
+        ConnectionError: error de base de datos o de la API externa (503).
     """
     ean = ean.strip()
 
+    # 1) Buscar en la BDD (y liberar la conexión enseguida)
     try:
         with db_pool.get_connection() as conn:
             with conn.cursor() as cursor:
@@ -102,149 +143,203 @@ def get_products_values(ean: str, codemag: str) -> ProductosGetResponse:
                     """,
                     (ean,)
                 )
-                product_values = cursor.fetchone()
-
-                # Si no está en la BDD, se consulta la API externa
-                if not product_values:
-
-                    logger.info(f"NO S'HA TROBAT EL PRODUCTE {ean} A LA BASE DE DADES")
-
-                    product_values = get_product_external_API(ean, codemag)
-
-                    if product_values:
-
-                        if len(ean) <= MAX_LEN["ean"]:
-                            cursor.execute(
-                                INSERT_PRODUCTE,
-                                (
-                                    ean,
-                                    _txt(product_values.nombre, "nom"),
-                                    _txt(product_values.familia, "familia"),
-                                    _txt(product_values.subfamilia, "subfamilia"),
-                                    _txt(product_values.color, "color"),
-                                    _txt(product_values.talla, "talla"),
-                                    _txt(product_values.temporada, "temporada"),
-                                    _txt(product_values.marca, "marca"),
-                                    product_values.pvp,
-                                )
-                            )
-                            conn.commit()
-
-                            logger.info(f"S'HA TROBAT EL PRODUCTE {ean} EN LA API EXTERNA I GUARDAT A LA BASE DE DADES")
-                        else:
-                            logger.warning(f"EAN {ean} MASSA LLARG ({len(ean)} > 13): NO ES GUARDA A PRODUCTES")
-
-                        return product_values
-
-                    logger.info(f"NO S'HA TROBAT EL PRODUCTE {ean} A LA API EXTERNA")
-
-                    return ProductosGetResponse(
-                        ean="??",
-                        nombre="??",
-                        familia="??",
-                        subfamilia="??",
-                        color="??",
-                        talla="??",
-                        pvp=0.00,
-                        prmp=0.00,
-                        temporada="??",
-                        marca="??"
-                    )
-
-        nombre, familia, subfamilia, color, talla, pvp, temporada, marca = product_values
-
-        color = color or "??"
-
-        # Limitar la longitud del color a 9 caracteres y agregar un punto final si es largo
-        if len(color) > 9:
-            color = color[0:9] + "."
-
-        return ProductosGetResponse(
-            ean=ean,
-            nombre=nombre or "??",
-            familia=familia or "??",
-            subfamilia=subfamilia or "??",
-            color=color,
-            talla=talla or "??",
-            pvp=float(pvp or 0),
-            prmp=0.0,
-            temporada=temporada or "??",
-            marca=marca or "??"
-        )
+                row = cursor.fetchone()
 
     except DBError as e:
         logger.critical(f"ERROR SQL: {e}")
         raise ConnectionError("Error de la base de dades")
 
+    if row:
+        return _row_to_response(ean, row)
+
+    # 2) No está: API externa (sin conexión a la BDD abierta)
+    logger.info(f"NO S'HA TROBAT EL PRODUCTE {ean} A LA BASE DE DADES: ES CONSULTA LA API EXTERNA")
+
+    product_values = get_product_external_API(ean, codemag)
+
+    if not product_values:
+        logger.info(f"NO S'HA TROBAT EL PRODUCTE {ean} A LA API EXTERNA")
+        return _producto_no_encontrado()
+
+    # 3) Guardar en productes (si falla el guardado, el producto se devuelve igualmente)
+    if len(ean) > MAX_LEN["ean"]:
+        logger.warning(f"EAN {ean} MASSA LLARG ({len(ean)} > 13): NO ES GUARDA A PRODUCTES")
+        return product_values
+
+    try:
+        with db_pool.get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    INSERT_PRODUCTE,
+                    (
+                        ean,
+                        _txt(product_values.nombre, "nom"),
+                        _txt(product_values.familia, "familia"),
+                        _txt(product_values.subfamilia, "subfamilia"),
+                        _txt(product_values.color, "color"),
+                        _txt(product_values.talla, "talla"),
+                        _txt(product_values.temporada, "temporada"),
+                        _txt(product_values.marca, "marca"),
+                        product_values.pvp,
+                    )
+                )
+                conn.commit()
+        logger.info(f"S'HA TROBAT EL PRODUCTE {ean} EN LA API EXTERNA I GUARDAT A LA BASE DE DADES")
+
+    except IntegrityError:
+        # Otro usuario lo ha guardado a la vez: no es un error
+        logger.info(f"EL PRODUCTE {ean} JA S'HAVIA GUARDAT (petició simultània)")
+
+    except Exception as e:
+        logger.error(f"NO S'HA POGUT GUARDAR EL PRODUCTE {ean} DE LA API EXTERNA: {e}")
+
+    return product_values
+
+
+# ---------------------------------------------------------------------------
+# API externa de partners (Korben)
+# ---------------------------------------------------------------------------
+EXTERNAL_API_URL = "https://api.partners.korben.com/API/SPN/services/infosProduitsSPN/getInfosProduit"
+EXTERNAL_API_BRANDS = ["CCH", "MGN", "CRL"]   # orden de prioridad si el EAN existe en varias
+
+
+def _parse_producto(ean: str, brand: str, data_object: dict) -> ProductosGetResponse:
+    libelle = (data_object.get("libelle") or "").strip()
+    pvp = str(data_object.get("pveuro") or 0)
+    temporada = data_object.get("saison") or "??"
+
+    nombre, familia, subfamilia, color, talla = "??", "??", "??", "??", "??"
+
+    # libelle: "NOMBRE COLOR TALLA" o "NOMBRE COLOR1 COLOR2 ... TALLA"
+    if libelle:
+        partes = libelle.split(" ")
+        nombre = partes[0] if len(partes) > 0 else "??"
+
+        if len(partes) == 3:
+            color = partes[1]
+            talla = partes[-1]
+        elif len(partes) > 3:
+            color = f"{partes[1]} {partes[2]}"
+            talla = partes[-1]
+
+    try:
+        pvp_value = round(float(pvp.replace(",", ".")), 2)
+    except ValueError:
+        pvp_value = 0.0
+
+    return ProductosGetResponse(
+        ean=ean,
+        nombre=nombre,
+        familia=familia,
+        subfamilia=subfamilia,
+        color=color,
+        talla=talla,
+        pvp=pvp_value,
+        prmp=0.0,
+        temporada=temporada,
+        marca=brand
+    )
+
+
+def _consultar_marca(ean: str, codigo_almacen: str, brand: str):
+    """
+    Consulta una marca en la API externa.
+
+    Returns:
+        ("ok", ProductosGetResponse) | ("no", None) si no existe en esa marca | ("error", motivo)
+    """
+    t0 = time.monotonic()
+    try:
+        response = requests.get(
+            EXTERNAL_API_URL,
+            params={"brand": brand, "ean": ean, "codemag": codigo_almacen},
+            headers={"Content-Type": "application/json", "KeyId": APIKEY_EXTERNAL},
+            timeout=(EXTERNAL_API_CONNECT_TIMEOUT, EXTERNAL_API_READ_TIMEOUT),
+        )
+        ms = int((time.monotonic() - t0) * 1000)
+
+        if response.status_code == 404:
+            logger.info(f"API EXTERNA {brand} EAN {ean}: 404 (no existeix) en {ms} ms")
+            return "no", None
+
+        if response.status_code >= 400:
+            logger.warning(f"API EXTERNA {brand} EAN {ean}: HTTP {response.status_code} en {ms} ms")
+            return "error", f"HTTP {response.status_code}"
+
+        data = response.json()
+        data_array = (data.get("getInfosProduit") or {}).get("data") or []
+
+        if data_array:
+            logger.info(f"API EXTERNA {brand} EAN {ean}: TROBAT en {ms} ms")
+            return "ok", _parse_producto(ean, brand, data_array[0])
+
+        logger.info(f"API EXTERNA {brand} EAN {ean}: sense dades en {ms} ms")
+        return "no", None
+
+    except requests.exceptions.ConnectTimeout:
+        motivo = f"timeout connectant (> {EXTERNAL_API_CONNECT_TIMEOUT}s)"
+    except requests.exceptions.ReadTimeout:
+        motivo = f"timeout esperant resposta (> {EXTERNAL_API_READ_TIMEOUT}s)"
+    except requests.exceptions.ProxyError as e:
+        motivo = f"error de proxy: {e}"
+    except requests.exceptions.SSLError as e:
+        motivo = f"error SSL: {e}"
+    except requests.exceptions.ConnectionError as e:
+        motivo = f"error de connexió: {e}"
+    except ValueError as e:
+        motivo = f"resposta no és JSON: {e}"
+    except Exception as e:
+        motivo = f"{type(e).__name__}: {e}"
+
+    ms = int((time.monotonic() - t0) * 1000)
+    logger.error(f"API EXTERNA {brand} EAN {ean}: ERROR en {ms} ms -> {motivo}")
+    return "error", motivo
+
 
 def get_product_external_API(ean: str, codigo_almacen: str):
     """
-    Busca un producto en la API externa de partners (marcas CCH, MGN y CRL, en ese orden).
+    Busca un producto en la API externa de partners en las marcas CCH, MGN y CRL.
+
+    Las tres marcas se consultan EN PARALELO y con timeout, así que la búsqueda tarda como
+    máximo lo que la consulta más lenta (connect + read timeout) y nunca se queda colgada.
 
     Returns:
-        ProductosGetResponse con los datos del producto, o None si no existe en ninguna marca.
+        ProductosGetResponse con los datos del producto (prioridad CCH > MGN > CRL),
+        o None si no existe en ninguna marca.
 
     Raises:
-        ConnectionError: si falla la comunicación con la API externa.
+        ConnectionError: si no se ha encontrado y alguna marca ha fallado (timeout, red, HTTP 5xx...),
+                         porque entonces no se puede asegurar que el producto no exista.
     """
-    for brand in ["CCH", "MGN", "CRL"]:
+    if not APIKEY_EXTERNAL:
+        logger.error("APIKEY_EXTERNAL NO ESTÀ DEFINIDA AL gestock.env")
+        raise ConnectionError("API externa no configurada")
 
-        url = f"https://api.partners.korben.com/API/SPN/services/infosProduitsSPN/getInfosProduit?brand={brand}&ean={ean}&codemag={codigo_almacen}"
+    t0 = time.monotonic()
+    logger.info(f"API EXTERNA: INICI CERCA EAN {ean} (codemag {codigo_almacen})")
 
-        headers = {
-            "Content-Type": "application/json",
-            "KeyId": APIKEY_EXTERNAL
+    with ThreadPoolExecutor(max_workers=len(EXTERNAL_API_BRANDS)) as pool:
+        futures = {
+            brand: pool.submit(_consultar_marca, ean, codigo_almacen, brand)
+            for brand in EXTERNAL_API_BRANDS
         }
+        results = {brand: future.result() for brand, future in futures.items()}
 
-        try:
-            response = requests.get(url, headers=headers)
-            response.raise_for_status()
-            data = response.json()
+    ms = int((time.monotonic() - t0) * 1000)
 
-            if "getInfosProduit" in data and "data" in data["getInfosProduit"]:
-                data_array = data["getInfosProduit"]["data"]
+    for brand in EXTERNAL_API_BRANDS:
+        estado, valor = results[brand]
+        if estado == "ok":
+            logger.info(f"API EXTERNA: EAN {ean} TROBAT A {brand} (total {ms} ms)")
+            return valor
 
-                if len(data_array) > 0:
-                    data_object = data_array[0]
+    errores = {brand: valor for brand, (estado, valor) in results.items() if estado == "error"}
 
-                    libelle = data_object.get("libelle", "").strip()
-                    pvp = str(data_object.get("pveuro") or 0)
-                    temporada = data_object.get("saison", "??")
-                    marca = brand
+    if errores:
+        logger.error(f"API EXTERNA: EAN {ean} NO TROBAT I AMB ERRORS (total {ms} ms): {errores}")
+        raise ConnectionError("Error con la comunicación de la API externa")
 
-                    nombre, familia, subfamilia, color, talla = "??", "??", "??", "??", "??"
-
-                    # libelle: "NOMBRE COLOR TALLA" o "NOMBRE COLOR1 COLOR2 ... TALLA"
-                    if libelle:
-                        partes = libelle.split(" ")
-                        nombre = partes[0] if len(partes) > 0 else "??"
-
-                        if len(partes) == 3:
-                            color = partes[1]
-                            talla = partes[-1]
-                        elif len(partes) > 3:
-                            color = f"{partes[1]} {partes[2]}"
-                            talla = partes[-1]
-
-                    logger.info(f"OBTENIDOS LOS DATOS EL PRODUCTO {ean}")
-
-                    return ProductosGetResponse(
-                        ean=ean,
-                        nombre=nombre,
-                        familia=familia,
-                        subfamilia=subfamilia,
-                        color=color,
-                        talla=talla,
-                        pvp=round(float(pvp), 2),
-                        prmp=0.0,
-                        temporada=temporada,
-                        marca=marca
-                    )
-
-        except Exception as e:
-            logger.error(f"ERROR EN LA API EXTERNA: {e}")
-            raise ConnectionError("Error con la comunicación de la API externa")
-
+    logger.info(f"API EXTERNA: EAN {ean} NO EXISTEIX A CAP MARCA (total {ms} ms)")
     return None
 
 

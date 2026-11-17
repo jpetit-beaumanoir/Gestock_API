@@ -58,14 +58,15 @@ async def get_product_values(
         return result
 
     except ConnectionError as exc:
-        logger.exception(
-            "ERROR DE BD OBTENINT INFORMACIÓ DEL PRODUCTE %s",
-            ean
+        logger.error(
+            "ERROR OBTENINT INFORMACIÓ DEL PRODUCTE %s: %s",
+            ean,
+            exc
         )
 
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Error de connexió amb la base de dades"
+            detail="No s'ha pogut consultar el producte (BDD o API externa no disponible). Torna-ho a provar"
         ) from exc
 
 

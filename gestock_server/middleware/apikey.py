@@ -1,92 +1,113 @@
 from fastapi import status, Request
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 from starlette.middleware.base import BaseHTTPMiddleware
 
 import logging
 logger = logging.getLogger(__name__)
 
-from gestock_server.config import API_KEYS, HEADER_NAME, MAX_FAILED_ATTEMPTS, PUBLIC_ROUTES, FAILED_ATTEMPTS, BLOCKED_IPS, BLOCKED_IPS_FILE
+from gestock_server.config import (
+    HEADER_NAME,
+    MAX_FAILED_ATTEMPTS,
+    PUBLIC_ROUTES,
+    FAILED_ATTEMPTS,
+    BLOCKED_IPS,
+    BLOCKED_IPS_FILE,
+)
+from gestock_server.services.usuaris_service import validar_api_key
+
+
+def _client_ip(request: Request) -> str:
+    """
+    IP del cliente. Si hay un proxy delante (X-Forwarded-For), la primera IP de la lista
+    es la del cliente original.
+    """
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "desconeguda"
+
 
 class APIKeyMiddleware(BaseHTTPMiddleware):
     """
-    Middleware para autenticar solicitudes mediante una API Key.
+    Autentica cada petición con la API key de la cabecera HEADER_NAME, validándola contra
+    la tabla usuaris de la BDD (ver services/usuaris_service.py).
 
-    Este middleware:
-    - Verifica que la solicitud incluya una API Key válida en los headers.
-    - Registra los intentos fallidos por IP.
-    - Bloquea automáticamente las IPs que superen un número máximo de intentos fallidos.
-    - Deniega el acceso a las IPs previamente bloqueadas.
+    - Sin clave, o con una clave que no está en usuaris (o de un usuario desactivado): se deniega
+      y se cuenta como intento fallido para esa IP.
+    - Al llegar a MAX_FAILED_ATTEMPTS intentos fallidos, la IP queda bloqueada (también tras
+      reiniciar, se guarda en BLOCKED_IPS_FILE).
+    - Si la BDD no responde se devuelve 503 y NO se cuenta como intento fallido
+      (no se bloquea a usuarios legítimos por una caída de la BDD).
+    - Con una clave válida se guardan en request.state: user, rol e id_usuari.
     """
 
     async def dispatch(self, request: Request, call_next):
-        """
-        Intercepta cada solicitud HTTP antes de llegar a la ruta destino.
-
-        Verifica:
-        - Si la IP está bloqueada, retorna error 401.
-        - Si la API Key es incorrecta, registra el intento fallido y bloquea la IP si excede el límite.
-        - Si la API Key es correcta, permite que la solicitud continúe normalmente.
-
-        Args:
-            request (Request): La solicitud HTTP entrante.
-            call_next (Callable): Función para pasar la solicitud al siguiente middleware o endpoint.
-
-        Returns:
-            Response: Respuesta HTTP, que puede ser un error o la respuesta normal del endpoint.
-        """
 
         if request.url.path in PUBLIC_ROUTES:
-            # Permitir acceso a rutas públicas sin necesidad de API Key
             return await call_next(request)
 
-        # Obtener la IP del cliente, respetando posibles proxies
-        client_ip = request.headers.get("X-Forwarded-For", request.client.host)
+        client_ip = _client_ip(request)
 
-        # Extraer la API Key del encabezado
-        api_key = request.headers.get(HEADER_NAME)
-
-        # Verificar si la IP ya está bloqueada
+        # IP bloqueada
         if client_ip in BLOCKED_IPS:
-            
-            logger.warning(f"Acceso bloqueado desde IP: {client_ip}, URL {request.url}")
+            logger.warning(f"Acceso bloqueado desde IP: {client_ip}, URL {request.url.path}")
             return JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 content={"detail": "IP bloqueada"}
             )
 
-        
+        api_key = request.headers.get(HEADER_NAME)
 
-        # Verificar si la API Key es válida
-        if not api_key or api_key not in API_KEYS:
-            
-            # Registrar intento fallido
-            logger.warning(f"Intento de acceso sin API Key válida: IP {client_ip}, URL {request.url}")
+        # Sin API key: se deniega directamente
+        if not api_key or not api_key.strip():
+            logger.warning(f"Petición sin API Key: IP {client_ip}, URL {request.url.path}")
+            return self._intento_fallido(client_ip, "Falta la API Key")
 
-            # Incrementar el contador de intentos fallidos
-            FAILED_ATTEMPTS[client_ip] = FAILED_ATTEMPTS.get(client_ip, 0) + 1
+        # Validación contra la BDD (en un hilo: la consulta es síncrona)
+        try:
+            usuario = await run_in_threadpool(validar_api_key, api_key)
 
-            # Si se superó el máximo de intentos, bloquear la IP
-            if FAILED_ATTEMPTS[client_ip] >= MAX_FAILED_ATTEMPTS:
-                BLOCKED_IPS.add(client_ip)
-                try:
-                    with open(BLOCKED_IPS_FILE, 'a', encoding='utf-8') as archivo:
-                        archivo.write(client_ip + '\n')
-                except OSError as e:
-                    logger.error(f"No s'ha pogut guardar la IP bloquejada a {BLOCKED_IPS_FILE}: {e}")
-                logger.warning(f"Acceso bloqueado desde IP: {client_ip}, URL {request.url}")
-                logger.warning(f"IP bloqueada automáticamente tras múltiples intentos: {client_ip}")
-                return JSONResponse(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    content={"detail": "IP bloqueada tras múltiples intentos fallidos"}
-                )
-
-            # Si aún no supera el límite, denegar con advertencia
+        except ConnectionError:
+            logger.error(f"No se puede validar la API Key (BDD no disponible): IP {client_ip}")
             return JSONResponse(
-                status_code=403,
-                content={"detail": "Acceso denegado: API Key incorrecta"}
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                content={"detail": "Servicio no disponible. Intente más tarde."}
             )
 
-        # Si la API Key es válida, permitir la solicitud
-        request.state.user = API_KEYS[api_key]["nom"]
-        request.state.rol = API_KEYS[api_key]["rol"]
+        # Clave que no está en usuaris (o usuario desactivado / de otra aplicación)
+        if usuario is None:
+            logger.warning(f"Intento de acceso con API Key no válida: IP {client_ip}, URL {request.url.path}")
+            return self._intento_fallido(client_ip, "Acceso denegado: API Key incorrecta")
+
+        # Clave válida: se reinicia el contador de fallos de la IP
+        FAILED_ATTEMPTS.pop(client_ip, None)
+
+        request.state.user = usuario.nom
+        request.state.rol = usuario.rol
+        request.state.id_usuari = usuario.id_usuari
+
         return await call_next(request)
+
+    @staticmethod
+    def _intento_fallido(client_ip: str, detalle: str) -> JSONResponse:
+        """Cuenta un intento fallido y bloquea la IP si llega al máximo."""
+        FAILED_ATTEMPTS[client_ip] = FAILED_ATTEMPTS.get(client_ip, 0) + 1
+
+        if FAILED_ATTEMPTS[client_ip] >= MAX_FAILED_ATTEMPTS:
+            BLOCKED_IPS.add(client_ip)
+            try:
+                with open(BLOCKED_IPS_FILE, 'a', encoding='utf-8') as archivo:
+                    archivo.write(client_ip + '\n')
+            except OSError as e:
+                logger.error(f"No s'ha pogut guardar la IP bloquejada a {BLOCKED_IPS_FILE}: {e}")
+            logger.warning(f"IP bloqueada automáticamente tras {FAILED_ATTEMPTS[client_ip]} intentos: {client_ip}")
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={"detail": "IP bloqueada tras múltiples intentos fallidos"}
+            )
+
+        return JSONResponse(
+            status_code=status.HTTP_403_FORBIDDEN,
+            content={"detail": detalle}
+        )
